@@ -97,6 +97,7 @@ int read_book(char *fpath) {
         sprintf(parentdir,"不支持的后缀（.%s）。\n请选择其它文件。",suffix);
         infobox(parentdir,72,1);
         Bfile_CloseFile_OS(fhBookFileHandle);
+        EnableGetkeyToMainFunctionReturn();
         return 250;
     }
     strcpy(pagedataname,"\\\\fls0\\");
@@ -155,7 +156,8 @@ int read_book(char *fpath) {
         //never forget closing files!
         Bfile_ReadFile_OS(fhPageData,&current_page_data.hdr,sizeof(current_page_data.hdr),0);
         if (!check_magic_paging(current_page_data.hdr.magic)) {
-            Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);return 254;
+            Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);
+            EnableGetkeyToMainFunctionReturn();return 254;
         }
         int filesize;
         switch(current_page_data.hdr.version) {
@@ -169,18 +171,19 @@ int read_book(char *fpath) {
             filesize = sizeof(PD3);break;
             case 4:
             filesize = sizeof(PD4);break;
-            default: Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（版本错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);return 254;
+            default: Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（版本错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);
+            EnableGetkeyToMainFunctionReturn();return 254;
         }
         int real_filesize = Bfile_GetFileSize_OS(fhPageData);
         if (real_filesize != filesize) {
             Bfile_CloseFile_OS(fhBookFileHandle);
             Bfile_CloseFile_OS(fhPageData);
-            infobox("不正确的分页文件（大小错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);return 254;
+            infobox("不正确的分页文件（大小错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return 254;
         }
         if (current_page_data.hdr.font != cfg.font_size) {
             Bfile_CloseFile_OS(fhBookFileHandle);
             Bfile_CloseFile_OS(fhPageData);
-            infobox("不正确的分页文件（对应字体错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);return 254;
+            infobox("不正确的分页文件（对应字体错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return 254;
         }
         Bfile_ReadFile_OS(fhPageData,&current_page_data,filesize,0);
         Bfile_CloseFile_OS(fhPageData);
@@ -196,6 +199,7 @@ int read_book(char *fpath) {
     int in_reading = 1;
     int current_page = 0;
     int key;
+    int quit = 0;
 
     /* Check whether there is a record for this book in the session config. */
     int index_cfg = -1;
@@ -239,7 +243,7 @@ int read_book(char *fpath) {
         FKey_Display(0,fkey_menu);
         FKey_Display(1,fkey_jump);
         GetKey(&key);
-        MenuItem menu_f1[] = {1,"显示文件信息",1,"清除此书所有书签",1,"退出"};
+        MenuItem menu_f1[] = {1,"显示文件信息",1,"清除此书所有书签",1,"返回主菜单",1,"退出程序"};
         MenuItem menu_f2[] = {1,"按页数",1,"到书签",1,"存储到书签…",1,"删除书签…"};
         if (index_cfg == -1) {menu_f2[1].enabled = 0; menu_f2[2].enabled = 0; menu_f2[3].enabled = 0;}
         int opt_ret;
@@ -248,7 +252,7 @@ int read_book(char *fpath) {
                 in_reading = 0; break;
             case KEY_CTRL_F1: case KEY_CTRL_MENU:
                 drawDialog(20,42,361,189);
-                opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,3,menu_f1,3,0,1,0);
+                opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,4,menu_f1,4,0,1,0);
                 if (opt_ret == 0) {    char buf[128];
     sprintf(buf,"文件路径：%s\n文件句柄：%d\n文件大小：%d字节\n文件页数：%d\n当前页码：%d\n配置文件槽位：%d",filename_real,fhBookFileHandle, Bfile_GetFileSize_OS(fhBookFileHandle),current_page_data.hdr.n_pages_avail,current_page+1,index_cfg);
     duplicateBackSlashes(buf);
@@ -262,6 +266,7 @@ int read_book(char *fpath) {
                     }
                 }
                 if (opt_ret == 2) in_reading = 0;
+                if (opt_ret == 3) {in_reading = 0; quit = 1;}
                 break;
             case KEY_CTRL_F2:
                 drawDialog(20,42,361,189);
@@ -391,7 +396,10 @@ int read_book(char *fpath) {
     Bfile_CloseFile_OS(fhBookFileHandle);
     DefineStatusMessage("",0,TEXT_COLOR_BLACK,0);
     EnableGetkeyToMainFunctionReturn();
-    return 0;
+    if (quit)
+        return 127;
+    else
+        return 0;
     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
 }
 

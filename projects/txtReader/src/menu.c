@@ -11,6 +11,8 @@
 SessionConfig cfg;
 int modified_cfg;
 
+void SaveAndOpenMainMenu(void);
+
 
 void main(void) {
     Bdisp_EnableColor(1);
@@ -65,13 +67,14 @@ void main(void) {
     drawDialog(45,67,325,180);
     int option = flexibleMenu(45,67-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,325-45,2,4,mainmenu,4,0,1,0);
     char *filepath[64];
+    int reader_ret;
     switch (option) {
         case 0:
             browseAndOpenFileI("\\\\fls0\\","*.*",filepath);
-            read_book(filepath);
+            reader_ret = read_book(filepath);
             break;
         case 1:
-            read_book(cfg.last_book->book_path);
+            reader_ret = read_book(cfg.last_book->book_path);
             break;
         case 2:
         {
@@ -147,6 +150,9 @@ void main(void) {
         Bfile_CloseFile_OS(fhConfigHandle);
     }
     }
+    if (reader_ret == 127) {
+        SaveAndOpenMainMenu();
+    }
     }
     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
 }
@@ -157,3 +163,77 @@ int detect_magic(char *magic) {
     return 0;
 }
 
+/* Opens the main menu.
+    Written by dr-carlos on Cemetech */
+void SaveAndOpenMainMenu(void) {
+  int addr;
+
+  // get the address of the syscall table in it
+  addr = *(unsigned int *)0x8002007C;
+
+  if (addr < (int)0x80020070)
+    return;
+  if (addr >= (int)0x81000000)
+    return;
+
+  // get the pointer to syscall 1E58 - SwitchToMainMenu
+  addr += 0x1E58 * 4;
+  if (addr < (int)0x80020070)
+    return;
+  if (addr >= (int)0x81000000)
+    return;
+
+  addr = *(unsigned int *)addr;
+  if (addr < (int)0x80020070)
+    return;
+  if (addr >= (int)0x81000000)
+    return;
+
+  // Now addr has the address of the first operation in %1e58
+
+  // Run up to 150 times (300/2). OS 3.60's is 59 instructions, so this should
+  // be plenty, but will let it stop if nothing is found
+  for (unsigned short *currentAddr = (unsigned short *)addr;
+       (unsigned int)currentAddr < ((unsigned int)addr + 300); currentAddr++) {
+    // MOV.L GetkeyToMainFunctionReturn Flag, r14
+    if (*(unsigned char *)currentAddr != 0xDE)
+      continue;
+
+    // MOV #3, 2
+    if (*(currentAddr + 1) != 0xE203)
+      continue;
+
+    // BSR <SaveAndOpenMainMenu>
+    if (*(unsigned char *)(currentAddr + 2) != 0xB5)
+      continue;
+
+    // MOV.B r2, @r14
+    if (*(currentAddr + 3) != 0x2E20)
+      continue;
+
+    // BRA <some addr>
+    if (*(currentAddr + 4) != 0xAFFB)
+      continue;
+
+    // NOP
+    if (*(currentAddr + 5) != 0x0009)
+      continue;
+
+    unsigned short branchInstruction = *(currentAddr + 2);
+
+    // Clear first 4 bits (BSR identifier)
+    branchInstruction <<= 4;
+    branchInstruction >>= 4;
+
+    // branchInstruction is now the displacement of BSR
+
+    // Create typedef so we can cast the pointer
+    typedef void (*voidFunc)(void);
+
+    // JMP to disp*2 + PC + 4
+    ((voidFunc)((unsigned int)branchInstruction * 2 +
+                (unsigned int)currentAddr + 4 + 4))();
+
+    return;
+  }
+}
