@@ -139,6 +139,9 @@ void main(void) {
         case 3:
             infobox("Preader Alpha 0.1.0\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
             break;
+        case -1:
+            SaveAndOpenMainMenu();
+            break;
     }
     if (modified_cfg) {
     fhConfigHandle = Bfile_OpenFile_OS(wszConfigfilePath,WRITE,0);
@@ -148,10 +151,12 @@ void main(void) {
         Bfile_SeekFile_OS(fhConfigHandle,0);
         Bfile_WriteFile_OS(fhConfigHandle,&cfg,sizeof(cfg));
         Bfile_CloseFile_OS(fhConfigHandle);
+        modified_cfg = 0;
     }
     }
     if (reader_ret == 127) {
         SaveAndOpenMainMenu();
+        reader_ret = 0;
     }
     }
     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
