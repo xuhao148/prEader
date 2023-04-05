@@ -14,11 +14,14 @@
 
 typedef struct _shiori {
     long byte_location;
+    long page_location;
     char preview[16];
 } Shiori;
 typedef struct _book_record {
     char book_path[32];
     long last_location; // Unit: byte
+    long last_byte_location;
+    int bookmark_version; // 0 : Large font; 1 : Small font
     Shiori bookmarks[8];
 } BookRecord;
 typedef struct _session_config {
@@ -156,7 +159,7 @@ int read_book(char *fpath) {
         //never forget closing files!
         Bfile_ReadFile_OS(fhPageData,&current_page_data.hdr,sizeof(current_page_data.hdr),0);
         if (!check_magic_paging(current_page_data.hdr.magic)) {
-            Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);
+            Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除分页文件，再使用本软件重建分页文件。",100,1);
             EnableGetkeyToMainFunctionReturn();return 254;
         }
         int filesize;
@@ -216,13 +219,44 @@ int read_book(char *fpath) {
             cfg.n_book_records++;
             strcpy(cfg.book_records[index_cfg].book_path,fpath);
             cfg.book_records[index_cfg].last_location = 0;
+            cfg.book_records[index_cfg].bookmark_version = cfg.font_size;
             for (int i=0; i<8; i++) {
                 cfg.book_records[index_cfg].bookmarks[i].byte_location = -1;
+                cfg.book_records[index_cfg].bookmarks[i].page_location = -1;
             }
         } else {
             infobox("配置文件空间已满，无法添加此书的记录。\n此书仍可以阅读，但无法保存书签及最后阅读的位置。\n请考虑重建配置文件。",100,1);
         }
     } else {
+        if (cfg.book_records[index_cfg].bookmark_version != cfg.font_size)
+        {
+            /* Last location conversion */
+            int p;
+            for (p=0; p<current_page_data.hdr.n_pages_avail; p++) {
+                if (current_page_data.pages[p] > cfg.book_records[index_cfg].last_byte_location) {
+                    p--; break;
+                }
+            }
+            if (p == current_page_data.hdr.n_pages_avail) p--;
+            cfg.book_records[index_cfg].last_location = p;
+            cfg.book_records[index_cfg].last_byte_location = current_page_data.pages[p];
+            /* Bookmark conversion */
+            for (int i=0; i<8; i++) {
+                if (cfg.book_records[index_cfg].bookmarks[i].byte_location >= 0) {
+                    int p;
+                    for (p=0; p<current_page_data.hdr.n_pages_avail; p++) {
+                        if (current_page_data.pages[p] > cfg.book_records[index_cfg].bookmarks[i].byte_location) {
+                            p--; break;
+                        }
+                    }
+                    if (p == current_page_data.hdr.n_pages_avail) p--;
+                    cfg.book_records[index_cfg].bookmarks[i].page_location = p;
+                    //cfg.book_records[index_cfg].bookmarks[i].byte_location = current_page_data.pages[p];
+                }
+            }
+            cfg.book_records[index_cfg].bookmark_version = cfg.font_size;
+
+        }
         current_page = cfg.book_records[index_cfg].last_location;
     }
     /* Start the reading loop. */
@@ -243,7 +277,7 @@ int read_book(char *fpath) {
         FKey_Display(0,fkey_menu);
         FKey_Display(1,fkey_jump);
         GetKey(&key);
-        MenuItem menu_f1[] = {1,"显示文件信息",1,"清除此书所有书签",1,"返回主菜单",1,"退出程序"};
+        MenuItem menu_f1[] = {1,"显示文件信息",1,"立即重建分页文件",1,"清除此书所有书签",1,"返回主菜单",1,"退出程序"};
         MenuItem menu_f2[] = {1,"按页数",1,"到书签",1,"存储到书签…",1,"删除书签…"};
         if (index_cfg == -1) {menu_f2[1].enabled = 0; menu_f2[2].enabled = 0; menu_f2[3].enabled = 0;}
         int opt_ret;
@@ -255,18 +289,23 @@ int read_book(char *fpath) {
                 opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,4,menu_f1,4,0,1,0);
                 if (opt_ret == 0) {    char buf[128];
     sprintf(buf,"文件路径：%s\n文件句柄：%d\n文件大小：%d字节\n文件页数：%d\n当前页码：%d\n配置文件槽位：%d",filename_real,fhBookFileHandle, Bfile_GetFileSize_OS(fhBookFileHandle),current_page_data.hdr.n_pages_avail,current_page+1,index_cfg);
-    duplicateBackSlashes(buf);
+    if (getSystemLanguage() != 5)
+        duplicateBackSlashes(buf);
     msgbox(buf,"文件信息",156,1,COLOR_BLUE);}
-                if (opt_ret == 1) {
+                if (opt_ret == 2) {
                     int chs = msgbox("确定清除此书的书签？\n[EXE] 确定 [EXIT] 取消","警告",50,1,COLOR_GOLD);
                     if (chs == KEY_CTRL_EXE) {
                         for (int i=0; i<8; i++) {
                             cfg.book_records[index_cfg].bookmarks[i].byte_location=-1;
+                            cfg.book_records[index_cfg].bookmarks[i].page_location=-1;
                         }
                     }
                 }
-                if (opt_ret == 2) in_reading = 0;
-                if (opt_ret == 3) {in_reading = 0; quit = 1;}
+                if (opt_ret == 1) {
+                    page_immediately(fhBookFileHandle,fpath,&cfg);
+                }
+                if (opt_ret == 3) in_reading = 0;
+                if (opt_ret == 4) {in_reading = 0; quit = 1;}
                 break;
             case KEY_CTRL_F2:
                 drawDialog(20,42,361,189);
@@ -304,13 +343,13 @@ int read_book(char *fpath) {
                             for (int i=0; i<8; i++) {
                                 if (cfg.book_records[index_cfg].bookmarks[i].byte_location >= 0) {
                                     bookmarks[i].enabled = 1;
-                                    sprintf(bookmark_labels[i],"%d:第%d页 %s",i+1,cfg.book_records[index_cfg].bookmarks[i].byte_location+1,cfg.book_records[index_cfg].bookmarks[i].preview);
+                                    sprintf(bookmark_labels[i],"%d:第%d页 %s",i+1,cfg.book_records[index_cfg].bookmarks[i].page_location+1,cfg.book_records[index_cfg].bookmarks[i].preview);
                                     bookmarks[i].label = bookmark_labels[i];
                                 }
                             }
                             drawDialog(50,66,329,197);
                             int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
-                            if (choice >= 0) current_page = cfg.book_records[index_cfg].bookmarks[choice].byte_location;
+                            if (choice >= 0) current_page = cfg.book_records[index_cfg].bookmarks[choice].page_location;
                         }
                     }
                     break;
@@ -321,13 +360,14 @@ int read_book(char *fpath) {
                             char bookmark_labels[8][64];
                             for (int i=0; i<8; i++) {
                                 if (cfg.book_records[index_cfg].bookmarks[i].byte_location >= 0) {
-                                    sprintf(bookmark_labels[i],"%d:第%d页 %s",i+1,cfg.book_records[index_cfg].bookmarks[i].byte_location+1,cfg.book_records[index_cfg].bookmarks[i].preview);
+                                    sprintf(bookmark_labels[i],"%d:第%d页 %s",i+1,cfg.book_records[index_cfg].bookmarks[i].page_location+1,cfg.book_records[index_cfg].bookmarks[i].preview);
                                     bookmarks[i].label = bookmark_labels[i];
                                 }
                             }
                             drawDialog(50,66,329,197);
                             int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,0,1,1);
-                            if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = current_page;
+                            if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = current_page_data.pages[current_page];
+                            cfg.book_records[index_cfg].bookmarks[choice].page_location = current_page;
                             Bfile_ReadFile_OS(fhBookFileHandle,cfg.book_records[index_cfg].bookmarks[choice].preview,15,current_page_data.pages[current_page]); }
                     }
                     break;
@@ -347,13 +387,15 @@ int read_book(char *fpath) {
                             for (int i=0; i<8; i++) {
                                 if (cfg.book_records[index_cfg].bookmarks[i].byte_location >= 0) {
                                     bookmarks[i].enabled = 1;
-                                    sprintf(bookmark_labels[i],"%d:第%d页 %s",i+1,cfg.book_records[index_cfg].bookmarks[i].byte_location+1,cfg.book_records[index_cfg].bookmarks[i].preview);
+                                    sprintf(bookmark_labels[i],"%d:第%d页 %s",i+1,cfg.book_records[index_cfg].bookmarks[i].page_location+1,cfg.book_records[index_cfg].bookmarks[i].preview);
                                     bookmarks[i].label = bookmark_labels[i];
                                 }
                             }
                             drawDialog(50,66,329,197);
                             int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
-                            if (choice >= 0) cfg.book_records[index_cfg].bookmarks[choice].byte_location = -1;
+                            if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = -1;
+                            cfg.book_records[index_cfg].bookmarks[choice].page_location = -1;
+                            }
                         }
                     }
                     break;
@@ -390,6 +432,7 @@ int read_book(char *fpath) {
     {
         modified_cfg = 1;
         cfg.book_records[index_cfg].last_location = current_page;
+        cfg.book_records[index_cfg].last_byte_location = current_page_data.pages[current_page];
         cfg.last_book = &cfg.book_records[index_cfg];
         cfg.has_last_book = 1;
     }
@@ -510,3 +553,57 @@ int check_magic_paging(char *str) {
     return 0;
 }
 
+int page_immediately(int handle, char *fpath, SessionConfig *config) {
+    char fname[64],suffix[8],pdir[48],pagefname[64];
+    unsigned short w_pagefname[65];
+    get_file_basename(fpath,fname,suffix,pdir);
+    strcpy(pagefname,"\\\\fls0\\");
+    strcat(pagefname,fname);
+    strcat(pagefname,".");
+    if (config->font_size) strcat(pagefname,"spd");
+    else strcat(pagefname,"lpd");
+    Bfile_StrToName_ncpy(w_pagefname,pagefname,64);
+    int fhImmediatePageFileHandle = Bfile_OpenFile_OS(w_pagefname,READ,0);
+    if (fhImmediatePageFileHandle > 0) {
+        Bfile_CloseFile_OS(fhImmediatePageFileHandle);
+        int choice = msgbox("这将删除原分页文件。\n继续？\n[EXIT] 取消 [EXE] 确定","警告",82,1,COLOR_GOLD);
+        if (choice == KEY_CTRL_EXE) {
+            int ret = Bfile_DeleteEntry(w_pagefname);
+            if (ret < 0) {
+                msgbox("无法删除原分页文件！","错误",40,1,COLOR_RED);
+                return -1; // Unable to delete
+            }
+        } else {
+            return -2; // User cancelled the operation
+        }
+    }
+    PD4 pagedata = {{{'P','A','G','D','T','A'},-1,-1,config->font_size}};
+    start_paging(handle,&pagedata,config);
+    int filesize;
+    switch(pagedata.hdr.version) {
+            case 0:
+            filesize = sizeof(PD0);break;
+            case 1:
+            filesize = sizeof(PD1);break;
+            case 2:
+            filesize = sizeof(PD2);break;
+            case 3:
+            filesize = sizeof(PD3);break;
+            case 4:
+            filesize = sizeof(PD4);break;
+            default: msgbox("分页失败！","错误",40,1,COLOR_RED);return -4; //Failed pagination
+    }
+    int ret = Bfile_CreateEntry_OS(w_pagefname,CREATEMODE_FILE,&filesize);
+    if (ret < 0) {
+        msgbox("无法创建新的分页文件！\n下次阅读此书时，您必须重建分页文件。","错误",68,1,COLOR_RED);
+        return -8; //Failed on file creation
+    }
+    fhImmediatePageFileHandle = Bfile_OpenFile_OS(w_pagefname,WRITE,0);
+    if (fhImmediatePageFileHandle < 0) {
+        msgbox("无法写入新的分页文件！\n下次阅读此书时，您必须重建分页文件。","错误",68,1,COLOR_RED);
+    }
+    Bfile_WriteFile_OS(fhImmediatePageFileHandle,&pagedata,filesize);
+    Bfile_CloseFile_OS(fhImmediatePageFileHandle);
+    infobox("重建成功。\n请重新进入以查看效果。",56,1);
+    return 0;
+}

@@ -24,9 +24,10 @@ void main(void) {
     Bfile_StrToName_ncpy(wszConfigfilePath,szConfigfilePath,32);
     int fhConfigHandle = Bfile_OpenFile_OS(wszConfigfilePath,READ,0);
     if (fhConfigHandle < 0) {
-        int cfret = Bfile_CreateEntry_OS(wszConfigfilePath,CREATEMODE_FILE,sizeof(SessionConfig));
+        int scsize = sizeof(SessionConfig);
+        int cfret = Bfile_CreateEntry_OS(wszConfigfilePath,CREATEMODE_FILE,&scsize);
         if (cfret < 0) {
-            fatal_error("无法读取或创建配置文件prconf.cfg。\n请检查你的文件系统，并重启Add-in。",72,1);
+            fatal_error("无法读取或创建配置文件prconf.cfg。\n请检查你的文件系统，并重启Add-in。",90,1);
         }
         fhConfigHandle = Bfile_OpenFile_OS(wszConfigfilePath,WRITE,0);
         if (fhConfigHandle < 0) {
@@ -94,17 +95,7 @@ void main(void) {
                 int chs;
                 switch (choice) {
                     case 0:
-                        chs = msgbox("这将清除所有书签！\n确定？\n[EXE] 确定  [EXIT] 取消","警告",89,1,COLOR_GOLD);
-                        if (chs == KEY_CTRL_EXE) {
-                            cfg.font_size = 1 - cfg.font_size;
-                            for (int i=0; i<32; i++) {
-                                cfg.book_records[i].last_location = 0;
-                                for (int j=0; j<8; j++) {
-                                    cfg.book_records[i].bookmarks[j].byte_location = -1;
-                                }
-                            }
-                            infobox("字体已切换。",54,1);
-                        }
+                        cfg.font_size = 1 - cfg.font_size;
                         break;
                     case 1:
                         cfg.process_backslashes = 1 - cfg.process_backslashes;break;
@@ -120,8 +111,10 @@ void main(void) {
                                 cfg.book_records[i].book_path[0] = 0;
                                 for (int j=0; j<8; j++)
                                     {cfg.book_records[i].bookmarks[j].byte_location = -1;
+                                    cfg.book_records[i].bookmarks[j].page_location = -1;
                                     cfg.book_records[i].bookmarks[j].preview[0] = 0;}
                                 cfg.book_records[i].last_location = 0;
+                                cfg.book_records[i].last_byte_location = 0;
                             }
                             infobox("已清除记录。",54,1);
                         }
@@ -137,7 +130,7 @@ void main(void) {
         }
         break;
         case 3:
-            infobox("Preader Alpha 0.1.0\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
+            infobox("Preader Alpha 0.1.1\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
             break;
         case -1:
             SaveAndOpenMainMenu();
