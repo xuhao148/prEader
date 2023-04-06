@@ -7,6 +7,12 @@
 
 #define AT(x,y) &vramaddr[(y)*384+(x)]
 
+const char *SYM_checked = "\xe6\xa9";
+const char *SYM_unchecked = "\xe6\xa5";
+const char *SYM_triangle = "\xe6\x9e";
+const char *SYM_radiooff = "\xe6\xa3";
+const char *SYM_radioon = "\xe6\xa4";
+
 static short *vramaddr = NULL;
 int printMiniSingleLineInRestrictedLineWidth(int x, int y, char *str, int width, color_t fgcolor, color_t bgcolor, int transparentbg);
 int printCXYSingleLineInRestrictedLineWidth(int x, int y, char *str, int width, color_t fgcolor, color_t bgcolor, int transparentbg);
@@ -19,6 +25,31 @@ typedef struct _menuitem {
     int enabled;
     char *label;
 } MenuItem;
+
+typedef struct _menuitem_complex {
+    char enabled;
+    /* 
+        Specifies the type of the menu item.
+        0 - Standard menu item. When user chooses the item, its result will be {type:0,index:[prop_index],value:1}
+        1 - Checkbox menu item. Whether user changes the item or not, it will be included in the result array, with value
+            {type:1, index:[prop_index of the item], value:[1 if on / 0 if not on]}
+        2 - Radiobutton menu item. Whether user changes the item or not, it will be included in the result array, with value
+            {type:2, index:[prop_index of the item], value:[array subscription of the item]}
+        3 - Menu item with black triangle on the right. When user chooses the item, its result will be {type:0,value:[prop_index]}
+     */
+    int type;
+    /*
+        Define the index of the item.
+        Each item should be assigned an arbitary but unique prop_index, which will be returned in its complexMenuItemResult,
+        except for Radiobutton menu items -- those in the same group should be assigned the same prop_index.
+    */
+    int prop_index;
+    /* Note that the label will be cut off if when is too long. */
+    char *label;
+    /* Checkbox items and radiobutton items use it; 0 for off and 1 for on */
+    char value;
+} complexMenuItem;
+
 
 /* Draws a simple dialog with gray shadow under it. */
 void drawDialog(int x1, int y1, int x2, int y2) {
@@ -168,6 +199,205 @@ int flexibleMenu(int left, int top, color_t bgcolor,
                 break;
             case KEY_CTRL_EXE:
                 LoadVRAM_1(); return current_scope + current_item_on_screen;
+            case KEY_CTRL_EXIT:
+                LoadVRAM_1(); return -1;
+        }
+    }
+}
+
+/* If normal items are chosen, returns its array subscription. If user used EXIT, returns -1.
+   The modification of the user reflects on the changes of values of entries[].*/
+int flexibleMenu_complex(int left, int top, color_t bgcolor, 
+                 int fontsize, color_t txtcolor, color_t txtcolorhi, color_t txtunavail,
+                 color_t bgcolorhi, int theme, int itemwidth, int linespace, int n_items,
+                 complexMenuItem entries[], int items_in_screen, int defaultitem, int isStatusBarOn,
+                 int usescrollbar
+                 )
+{
+    SaveVRAM_1();
+    int key;
+    int result_index = 0;
+    int current_scope;
+    int current_item_on_screen;
+    int rect_y_offset = 0;
+    int right = left + itemwidth - 1;
+    int fontheight = fontsize==1?18:24;
+    if (right >= 384) right = 383;
+    int bottom = top + linespace * (items_in_screen - 1) + fontheight * items_in_screen - 1;
+    if (top >= 216) top = 215;
+    if (bottom >= 216) bottom = 215;
+
+    /*Initializing variables*/
+    int itemheight_with_linespace = fontheight + linespace;
+    if (isStatusBarOn) rect_y_offset = 24;
+    /* Determine how the menu is initially shown. "Scope" means the first item on screen currently; "Item on screen" means the (n-1)th item on screen. */
+    if (defaultitem < items_in_screen) {
+        current_scope = 0;
+        current_item_on_screen = defaultitem;
+    } else {
+        current_scope = defaultitem - items_in_screen + 1;
+        current_item_on_screen = items_in_screen - 1;
+    }
+
+    while (1)
+    {
+        /* Clears up te space for the menu items. */
+        rect(left,top+rect_y_offset,right,bottom+rect_y_offset,bgcolor);
+        /* Draws the items, with different colors like when highlighted, etc. */
+        for (int i=0; i<items_in_screen && current_scope+i < n_items; i++) {
+            int txtcolor_s;
+            /*Draws the cursor*/
+            if (i == current_item_on_screen) {
+                if (theme == 1) {
+                    rect(left,top+rect_y_offset+i*itemheight_with_linespace+fontheight-2,left+itemwidth-1,top+rect_y_offset+i*itemheight_with_linespace+fontheight-1,bgcolorhi);
+                } else {
+                    rect(left,top+rect_y_offset+i*itemheight_with_linespace,left+itemwidth-1,top+rect_y_offset+i*itemheight_with_linespace+fontheight-1,bgcolorhi);
+                }
+                txtcolor_s=txtcolorhi;
+            } else {
+                if (entries[current_scope+i].enabled)
+                    txtcolor_s=txtcolor;
+                else
+                    txtcolor_s=txtunavail;
+            }
+
+            /*Draws the items*/
+            {
+                int dwidth = entries[current_scope+i].type == 0 ? 0 : (fontsize==1?-16:-18);
+                
+                /* Draws the extra component */
+                switch (entries[current_scope+i].type) {
+                    case 1:
+                        if (entries[current_scope+i].value) {
+                            if (fontsize) {
+                                int l = left+itemwidth+dwidth;
+                                int t = top+i*itemheight_with_linespace;
+                                PrintMini(&l,&t,SYM_checked,0x02,-1,0,0,txtcolor_s,bgcolor,1,0);
+                            } else {
+                                PrintCXY(left+itemwidth+dwidth,top+i*itemheight_with_linespace,SYM_checked,0x20,-1,txtcolor_s,bgcolor,1,0);
+                            }
+                        } else {
+                            if (fontsize) {
+                                int l = left+itemwidth+dwidth;
+                                int t = top+i*itemheight_with_linespace;
+                                PrintMini(&l,&t,SYM_unchecked,0x02,-1,0,0,txtcolor_s,bgcolor,1,0);
+                            } else {
+                                PrintCXY(left+itemwidth+dwidth,top+i*itemheight_with_linespace,SYM_unchecked,0x20,-1,txtcolor_s,bgcolor,1,0);
+                            }
+                        }
+                        break;
+                    case 2:
+                        if (entries[current_scope+i].value) {
+                            if (fontsize) {
+                                int l = left+itemwidth+dwidth;
+                                int t = top+i*itemheight_with_linespace;
+                                PrintMini(&l,&t,SYM_radioon,0x02,-1,0,0,txtcolor_s,bgcolor,1,0);
+                            } else {
+                                PrintCXY(left+itemwidth+dwidth,top+i*itemheight_with_linespace,SYM_radioon,0x20,-1,txtcolor_s,bgcolor,1,0);
+                            }
+                        } else {
+                            if (fontsize) {
+                                int l = left+itemwidth+dwidth;
+                                int t = top+i*itemheight_with_linespace;
+                                PrintMini(&l,&t,SYM_radiooff,0x02,-1,0,0,txtcolor_s,bgcolor,1,0);
+                            } else {
+                                PrintCXY(left+itemwidth+dwidth,top+i*itemheight_with_linespace,SYM_radiooff,0x20,-1,txtcolor_s,bgcolor,1,0);
+                            }
+                        }
+                        break;
+                    case 3:
+                        if (fontsize) {
+                            int l = left+itemwidth+dwidth;
+                            int t = top+i*itemheight_with_linespace;
+                            PrintMini(&l,&t,SYM_triangle,0x02,-1,0,0,txtcolor_s,bgcolor,1,0);
+                        } else {
+                            PrintCXY(left+itemwidth+dwidth,top+i*itemheight_with_linespace,SYM_triangle,0x20,-1,txtcolor_s,bgcolor,1,0);
+                        }
+                        break;
+                }
+            /* Draws the main text */
+            if (fontsize == 1)
+            {
+                printMiniSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth+dwidth,txtcolor_s,bgcolor,1);
+            } else {
+                printCXYSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth+dwidth,txtcolor_s,bgcolor,1);
+            }
+            }
+        }
+        /*
+            £¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡
+            TODO HERE
+            £¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡£¡
+        */
+        /* Draws the scroll bar. This will always appear on the right of the whole menu.
+           If there are too few items, the scrollbar won't be created and shown. */
+        if (usescrollbar && n_items > items_in_screen) {
+            struct scrollbar csb = {0};
+            csb.indicatormaximum = n_items - items_in_screen + 1;
+            csb.indicatorheight = 1;
+            csb.indicatorpos = current_scope;
+            csb.barleft = right + 1;
+            csb.bartop = top;
+            csb.barheight = bottom-top;
+            csb.barwidth = 6;
+            Scrollbar(&csb);
+        }
+
+        /* Controls key operations. This uses getkey, thus allowing user to return to MENU.
+        Therefore, remember closing all your files before invoking a menu! (Or invoke DisableMenuBlahblah)*/
+
+        GetKey(&key);
+        int current_item;
+        switch (key) {
+            case KEY_CTRL_DOWN:
+                do {
+                current_item = current_scope + current_item_on_screen;
+                if (current_item == n_items - 1) {
+                    current_scope = 0;
+                    current_item_on_screen = 0;
+                } else {
+                    if (current_item_on_screen < items_in_screen - 1) current_item_on_screen++;
+                    else {current_scope++;}
+                }
+                current_item = current_scope + current_item_on_screen;
+                } while (!entries[current_item].enabled);
+                break;
+            case KEY_CTRL_UP:
+                current_item = current_scope + current_item_on_screen;
+                do {
+                if (current_item == 0) {
+                    if (n_items > items_in_screen) {
+                        current_scope = n_items - items_in_screen;
+                        current_item_on_screen = items_in_screen - 1;
+                    } else {
+                        current_item_on_screen = n_items - 1;
+                    }
+                } else {
+                    if (current_item_on_screen > 0) current_item_on_screen--;
+                    else {current_scope--;}
+                }
+                current_item = current_scope + current_item_on_screen;
+                } while (!entries[current_item].enabled);
+                break;
+            case KEY_CTRL_EXE:
+                /* Where things gets complicated...*/
+                current_item = current_item_on_screen + current_scope;
+                switch (entries[current_item].type) {
+                    case 0:case 3:
+                    return current_item;
+                    case 1:
+                    entries[current_item].value = 1 - entries[current_item].value;break;
+                    case 2:
+                    for (int i=0; i<n_items; i++) {
+                        if (entries[i].type == 2 && entries[i].prop_index == entries[current_item].prop_index) {
+                            if (i == current_item) entries[i].value = 1;
+                            else entries[i].value = 0;
+                        }
+                    }
+                    break;
+                    default: LoadVRAM_1();return -1;
+                }
+                break;
             case KEY_CTRL_EXIT:
                 LoadVRAM_1(); return -1;
         }
