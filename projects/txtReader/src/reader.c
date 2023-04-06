@@ -30,6 +30,9 @@ typedef struct _session_config {
     int  font_size; // 0:Standard 1:Mini Other values will be treated as 0
     int  n_book_records;
     int  process_backslashes; // 0: Do not process backslashes (It will be treated as escape sequences)  1: process backslashes (\ -> \\)
+    int  use_bgpict;
+    int  hide_ui;
+    char bgpict_path[32];
     BookRecord book_records[32];
     BookRecord *last_book;
 } SessionConfig;
@@ -259,6 +262,33 @@ int read_book(char *fpath) {
         }
         current_page = cfg.book_records[index_cfg].last_location;
     }
+
+    /* Open the image file. */
+    int bgImageFileFh;
+    if (cfg.use_bgpict)
+    {
+        unsigned short wchar_path[64];
+        Bfile_StrToName_ncpy(wchar_path,cfg.bgpict_path,32);
+        bgImageFileFh = Bfile_OpenFile_OS(wchar_path,READ,0);
+        if (bgImageFileFh < 0) {
+            Bfile_CloseFile_OS(fhBookFileHandle);
+            fatal_error("无法打开背景图片文件。",64,1);
+        }
+        int fsize = Bfile_GetFileSize_OS(bgImageFileFh);
+        if (fsize != 384*216*2) {
+            Bfile_CloseFile_OS(bgImageFileFh);
+            Bfile_CloseFile_OS(fhBookFileHandle);
+            fatal_error("指定的图片文件大小错误。",64,1);
+        }
+    }
+
+    unsigned short *vram = GetVRAMAddress();
+    if (cfg.use_bgpict)
+    {
+        Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
+        SaveVRAM_1();
+    }
+    EnableStatusArea(cfg.hide_ui?3:0);
     /* Start the reading loop. */
     DefineStatusAreaFlags(1,0,0,0);
     while (in_reading) {
@@ -268,14 +298,18 @@ int read_book(char *fpath) {
         else
             sprintf(status_msg,"[%d] %s %d/%d %d%%",index_cfg,filename_real,current_page+1,current_page_data.hdr.n_pages_avail,100*(current_page+1)/current_page_data.hdr.n_pages_avail);
         DefineStatusMessage(status_msg,0,TEXT_COLOR_BLACK,0);
-        DisplayStatusArea();
+        if (cfg.use_bgpict) LoadVRAM_1();
+        if (!cfg.hide_ui)
+            DisplayStatusArea();
         draw_one_page(fhBookFileHandle,current_page_data.pages[current_page],cfg.font_size,0,cfg.process_backslashes);
         void *fkey_menu;
         void *fkey_jump;
         GetFKeyPtr(396,&fkey_menu);
         GetFKeyPtr(508,&fkey_jump);
+        if (!cfg.hide_ui) {
         FKey_Display(0,fkey_menu);
         FKey_Display(1,fkey_jump);
+        }
         GetKey(&key);
         MenuItem menu_f1[] = {1,"显示文件信息",1,"立即重建分页文件",1,"清除此书所有书签",1,"返回主菜单",1,"退出程序"};
         MenuItem menu_f2[] = {1,"按页数",1,"到书签",1,"存储到书签…",1,"删除书签…"};
@@ -427,6 +461,14 @@ int read_book(char *fpath) {
                     current_page = current_page_data.hdr.n_pages_avail - 1;
                 break;
         }
+        if (key != KEY_CTRL_DOWN && key != KEY_CTRL_UP && key != KEY_CTRL_LEFT && key != KEY_CTRL_RIGHT) {
+            if (cfg.use_bgpict)
+            {
+                Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
+                SaveVRAM_1();
+                /* Some function might have modified Secondary VRAM. We need to read it again. */
+            }
+        }
     }
     if (index_cfg != -1)
     {
@@ -437,6 +479,7 @@ int read_book(char *fpath) {
         cfg.has_last_book = 1;
     }
     Bfile_CloseFile_OS(fhBookFileHandle);
+    Bfile_CloseFile_OS(bgImageFileFh);
     DefineStatusMessage("",0,TEXT_COLOR_BLACK,0);
     EnableGetkeyToMainFunctionReturn();
     if (quit)
@@ -491,13 +534,13 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
             x = 0; y = 18 * l;
             if (!dryrun) {
             ProcessPrintChars(936);
-            PrintMini(&x,&y,linebuf,0,-1,0,0,COLOR_BLACK,COLOR_WHITE,1,0);
+            PrintMini(&x,&y,linebuf,0x02,-1,0,0,COLOR_BLACK,COLOR_WHITE,1,0);
             ProcessPrintChars(0);
             }
         } else {
             if (!dryrun) {
             ProcessPrintChars(936);
-            PrintCXY(0,24*l,linebuf,0,-1,COLOR_BLACK,COLOR_WHITE,1,0);
+            PrintCXY(0,24*l,linebuf,0x20,-1,COLOR_BLACK,COLOR_WHITE,1,0);
             ProcessPrintChars(0);
             }
         }

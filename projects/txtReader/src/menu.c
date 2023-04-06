@@ -8,7 +8,7 @@
 #include <preader/i18n.h>
 #include <preader/reader.h>
 
-SessionConfig cfg;
+SessionConfig cfg = {0};
 int modified_cfg = 0;
 
 void SaveAndOpenMainMenu(void);
@@ -62,7 +62,8 @@ void main(void) {
     DefineStatusAreaFlags(1,0,0,0);
     while (1) {
     Bdisp_AllClr_VRAM();
-    DefineStatusMessage("Preader v1.1 Alpha",1,TEXT_COLOR_BLACK,0);
+    DefineStatusMessage("Preader v0.1.1r2 Alpha",1,TEXT_COLOR_BLACK,0);
+    EnableStatusArea(0);
     DisplayStatusArea();
     if (modified_cfg) {
       printMiniSingleLineCutOffUnprintables(0,LCD_HEIGHT_PX-40,"设置已更新！",LCD_WIDTH_PX,COLOR_BLUE,COLOR_WHITE,0);
@@ -84,16 +85,21 @@ void main(void) {
             break;
         case 2:
        {
-        complexMenuItem settingsItems[] = {{0,0,0,"字体大小",0},{1,2,0,"- 大字体",0},{1,2,0,"- 小字体",0},{1,1,0,"反斜线按原字符输出",0},{1,0,0,"清除所有记录",0},{1,0,0,"应用并返回主菜单",0},{1,0,0,"取消并返回主菜单"}};
+        complexMenuItem settingsItems[] = {{0,0,0,"字体大小",0},{1,2,0,"- 大字体",0},{1,2,0,"- 小字体",0},{1,1,0,"反斜线按原字符输出",0},{1,0,0,"清除所有记录",0},{1,0,0,"应用并返回主菜单",0},{1,0,0,"取消并返回主菜单",0},{1,3,0,"背景图片设置"},{1,1,0,"隐藏状态栏与Fn键栏",0}};
         settingsItems[1].value = !cfg.font_size;
         settingsItems[2].value = cfg.font_size;
         settingsItems[3].value = cfg.process_backslashes;
+        settingsItems[8].value = cfg.hide_ui;
         int choice;
+        char tmp_pictpath[32];
+        int tmp_set_pictpath = 0;
+        int tmp_pictpath_settings_changed = 0;
+        strcpy(tmp_pictpath,cfg.bgpict_path); tmp_set_pictpath = cfg.use_bgpict;
         do {
         Bdisp_AllClr_VRAM();
         DisplayStatusArea();
         drawDialog(5,29,376,193);
-        choice = flexibleMenu_complex(5,29-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,376-5+1-6,2,7,settingsItems,6,1,1,1);
+        choice = flexibleMenu_complex(5,29-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,376-5+1-6,2,9,settingsItems,6,1,1,1);
         if (choice == 4) {
           int chs = msgbox("所有阅读记录将永久清除、无法恢复！\n确定？\n[EXE] 确定  [EXIT] 取消","警告",100,1,COLOR_RED);
           if (chs == KEY_CTRL_EXE) {
@@ -119,12 +125,41 @@ void main(void) {
           modified_cfg = 1;
           cfg.font_size = settingsItems[2].value;
           cfg.process_backslashes = settingsItems[3].value;
+          cfg.hide_ui = settingsItems[8].value;
+          if (tmp_pictpath_settings_changed) {
+          strcpy(cfg.bgpict_path,tmp_pictpath);
+          cfg.use_bgpict = tmp_set_pictpath;
+          }
+        } else if (choice == 7) {
+          complexMenuItem bgSettingsItems[] = {{1,1,0,"启用",0},{1,3,0,"选择图片",0},{1,0,0,"确定",0},{1,0,0,"取消",0},{0,0,0,NULL,0}};
+          int choice;
+          char new_tmp_pictpath[32];
+          int new_tmp_set_pictpath;
+          strcpy(new_tmp_pictpath,tmp_pictpath);
+          new_tmp_set_pictpath = tmp_set_pictpath;
+          do {
+          Bdisp_AllClr_VRAM();
+          DisplayStatusArea();
+          drawDialog(5,29,376,193);
+          bgSettingsItems[0].value = new_tmp_set_pictpath;
+          char curr[64];
+          sprintf(curr,"当前：%s",new_tmp_pictpath[0]?new_tmp_pictpath:"（无）");
+          duplicateBackSlashes(curr);
+          bgSettingsItems[4].label = curr;
+          choice = flexibleMenu_complex(5,29-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,376-5+1-6,2,5,bgSettingsItems,5,1,1,1);
+          if (choice == 1) {
+            browseAndOpenFileI("\\\\fls0\\","*.*",new_tmp_pictpath);
+            /*TODO: Write a small procedure that checks whether it is a valid RAW VRAM file. It should be easy.*/
+          }
+          new_tmp_set_pictpath = bgSettingsItems[0].value;
+          } while (choice != -1 && choice != 2 && choice != 3);
+          if (choice == 2) {tmp_pictpath_settings_changed = 1; strcpy(tmp_pictpath,new_tmp_pictpath); tmp_set_pictpath = new_tmp_set_pictpath;}
         }
-        } while (choice == 4);
+        } while (choice != -1 && choice != 5 && choice != 6);
        }
         break;
         case 3:
-            infobox("Preader Alpha 0.1.1\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
+            infobox("Preader Alpha 0.1.1r2\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
             break;
         case -1:
             SaveAndOpenMainMenu();
