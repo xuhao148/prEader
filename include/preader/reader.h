@@ -19,6 +19,9 @@ typedef struct _session_config {
     int  font_size; // 0:Standard 1:Mini Other values will be treated as 0
     int  n_book_records;
     int  process_backslashes; // 0: Do not process backslashes (It will be treated as escape sequences)  1: process backslashes (\ -> \\)
+    int  use_bgpict;
+    int  hide_ui;
+    char bgpict_path[32];
     BookRecord book_records[32];
     BookRecord *last_book;
 } SessionConfig;
