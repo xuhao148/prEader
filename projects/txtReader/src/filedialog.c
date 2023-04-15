@@ -5,6 +5,7 @@
 #include <string.h>
 #include <preader/i18n.h>
 #include <preader/ui.h>
+#include "prdefinitions.h"
 
 typedef struct
 {
@@ -117,6 +118,10 @@ int fileMenuSelect(file_info_t files[], int max_n, char *pathname, char *filter)
                 return listindex+menuindex;
             }
         }
+        if (key == KEY_CTRL_EXIT || key == KEY_CTRL_AC) {
+            DefineStatusMessage("",0,TEXT_COLOR_BLACK,0);
+            return MENU_DISCARDED;
+        }
         Bdisp_AllClr_VRAM();
         ProcessPrintChars(936);
         if (max_n)
@@ -205,6 +210,7 @@ int openFileDialogDisclosure(const char *pathname, const char *filter, char *fil
     }
     Bfile_FindClose(find_handle);
     int chosen = fileMenuSelect(fi,i,pathname,filter);
+    if (chosen == MENU_DISCARDED) return R_FB_PRESSED_EXIT;
     strcpy(filename,fi[chosen].pathname);
     return fi[chosen].fProperties.type;
 }
@@ -245,18 +251,22 @@ int browseAndOpenFileI(const char *path, const char *filter, char *filename_chos
     char path_holder[128];
     strcpy(path_holder,path);
     int filetype = openFileDialogDisclosure(path_holder,filter,filename);
+    if (filetype == R_FB_PRESSED_EXIT) return R_FB_PRESSED_EXIT;
     while (1) {
         if (!strcmp(filename,".")) {
             filetype = openFileDialogDisclosure(path_holder,filter,filename);
+            if (filetype == R_FB_PRESSED_EXIT) return R_FB_PRESSED_EXIT;
         } else if (!strcmp(filename,"..")) {
             path_deletelast(path_holder);
             filetype = openFileDialogDisclosure(path_holder,filter,filename);
+            if (filetype == R_FB_PRESSED_EXIT) return R_FB_PRESSED_EXIT;
         } else if (filetype == 0) {
             path_concat(path_holder,filename);
             int len = strlen(path_holder);
             path_holder[len] = '\\';
             path_holder[len+1] = '\0';
             filetype = openFileDialogDisclosure(path_holder,filter,filename);
+            if (filetype == R_FB_PRESSED_EXIT) return R_FB_PRESSED_EXIT;
         } else {
             path_concat(path_holder,filename);
             break;

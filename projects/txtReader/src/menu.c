@@ -7,12 +7,13 @@
 #include <preader/ui.h>
 #include <preader/i18n.h>
 #include <preader/reader.h>
+#include "prdefinitions.h"
 
 SessionConfig cfg = {0};
 int modified_cfg = 0;
 
 void SaveAndOpenMainMenu(void);
-
+extern void slot_manager(void);
 
 void main(void) {
     Bdisp_EnableColor(1);
@@ -62,34 +63,53 @@ void main(void) {
     DefineStatusAreaFlags(1,0,0,0);
     while (1) {
     Bdisp_AllClr_VRAM();
-    DefineStatusMessage("Preader v0.1.1r2 Alpha",1,TEXT_COLOR_BLACK,0);
+    DefineStatusMessage("Preader v0.1.2 Alpha",1,TEXT_COLOR_BLACK,0);
     EnableStatusArea(0);
     DisplayStatusArea();
     if (modified_cfg) {
       printMiniSingleLineCutOffUnprintables(0,LCD_HEIGHT_PX-40,"设置已更新！",LCD_WIDTH_PX,COLOR_BLUE,COLOR_WHITE,0);
     }
     modified_cfg = 0;
-    MenuItem mainmenu[] = {1,"打开新文件",1,"打开最近的文件",1,"设置",1,"关于此程序"};
-    mainmenu[1].enabled = cfg.has_last_book;
-    drawDialog(45,67,325,180);
-    int option = flexibleMenu(45,67-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,325-45,2,4,mainmenu,4,0,1,0);
+    MenuItem mainmenu[N_M_MAIN];
+    register_menuitem_normal(&mainmenu[M_MAIN_BROWSE],1,"打开新文件");
+    register_menuitem_normal(&mainmenu[M_MAIN_OPEN_RECENT],1,"打开最近的文件");
+    register_menuitem_normal(&mainmenu[M_MAIN_SETTINGS],1,"设置");
+    register_menuitem_normal(&mainmenu[M_MAIN_ABOUT],1,"关于此程序");
+    register_menuitem_normal(&mainmenu[M_MAIN_MANAGE_SLOTS],1,"管理存储槽位");
+    mainmenu[M_MAIN_OPEN_RECENT].enabled = cfg.has_last_book;
+    drawDialog(45,47,325,184);
+    int option = flexibleMenu(45,47-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,325-45,2,5,mainmenu,5,0,1,0);
     char *filepath[64];
-    int reader_ret;
+    int reader_ret = 0;
     switch (option) {
-        case 0:
-            browseAndOpenFileI("\\\\fls0\\","*.*",filepath);
-            reader_ret = read_book(filepath);
+        case M_MAIN_BROWSE:
+            {
+            int ft_ret = browseAndOpenFileI("\\\\fls0\\","*.*",filepath);
+            if (ft_ret != R_FB_PRESSED_EXIT)
+              reader_ret = read_book(filepath);
+            }
             break;
-        case 1:
+        case M_MAIN_OPEN_RECENT:
             reader_ret = read_book(cfg.last_book->book_path);
             break;
-        case 2:
+        case M_MAIN_SETTINGS:
        {
-        complexMenuItem settingsItems[] = {{0,0,0,"字体大小",0},{1,2,0,"- 大字体",0},{1,2,0,"- 小字体",0},{1,1,0,"反斜线按原字符输出",0},{1,0,0,"清除所有记录",0},{1,0,0,"应用并返回主菜单",0},{1,0,0,"取消并返回主菜单",0},{1,3,0,"背景图片设置"},{1,1,0,"隐藏状态栏与Fn键栏",0}};
-        settingsItems[1].value = !cfg.font_size;
-        settingsItems[2].value = cfg.font_size;
-        settingsItems[3].value = cfg.process_backslashes;
-        settingsItems[8].value = cfg.hide_ui;
+        complexMenuItem settingsItems[N_M_CONF];
+        register_menuitem_complex(&settingsItems[M_CONF_LABEL_FONT_SIZE],0,0,0,"字体大小",0);
+        register_menuitem_complex(&settingsItems[M_CONF_CHECK_FONT_LARGE],1,2,0,"- 大字体",0);
+        register_menuitem_complex(&settingsItems[M_CONF_CHECK_FONT_SMALL],1,2,0,"- 小字体",0);
+        register_menuitem_complex(&settingsItems[M_CONF_CHECK_BACKSLASH],1,1,0,"反斜线按原字符输出",0);
+        register_menuitem_complex(&settingsItems[M_CONF_CLEAR_SESSION],1,0,0,"清除所有记录",0);
+        register_menuitem_complex(&settingsItems[M_CONF_APPLY_RETURN],1,0,0,"应用并返回主菜单",0);
+        register_menuitem_complex(&settingsItems[M_CONF_DISMISS_RETURN],1,0,0,"取消并返回主菜单",0);
+        register_menuitem_complex(&settingsItems[M_CONF_BGPICT_SETTINGS],1,3,0,"背景图片设置",0);
+        register_menuitem_complex(&settingsItems[M_CONF_HIDE_HUD],1,1,0,"隐藏状态栏与Fn键栏",0);
+        register_menuitem_complex(&settingsItems[M_CONF_DRAW_PROGRESSBAR],1,1,0,"在底部绘制进度条",0);
+        settingsItems[M_CONF_CHECK_FONT_LARGE].value = !cfg.font_size;
+        settingsItems[M_CONF_CHECK_FONT_SMALL].value = cfg.font_size;
+        settingsItems[M_CONF_CHECK_BACKSLASH].value = cfg.process_backslashes;
+        settingsItems[M_CONF_HIDE_HUD].value = cfg.hide_ui;
+        settingsItems[M_CONF_DRAW_PROGRESSBAR].value = cfg.draw_progressbar;
         int choice;
         char tmp_pictpath[32];
         int tmp_set_pictpath = 0;
@@ -99,8 +119,8 @@ void main(void) {
         Bdisp_AllClr_VRAM();
         DisplayStatusArea();
         drawDialog(5,29,376,193);
-        choice = flexibleMenu_complex(5,29-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,376-5+1-6,2,9,settingsItems,6,1,1,1);
-        if (choice == 4) {
+        choice = flexibleMenu_complex(5,29-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,376-5+1-6,2,10,settingsItems,6,1,1,1);
+        if (choice == M_CONF_CLEAR_SESSION) {
           int chs = msgbox("所有阅读记录将永久清除、无法恢复！\n确定？\n[EXE] 确定  [EXIT] 取消","警告",100,1,COLOR_RED);
           if (chs == KEY_CTRL_EXE) {
                             modified_cfg = 1;
@@ -121,17 +141,23 @@ void main(void) {
                             infobox("已清除记录。",54,1);
                         }
                         break;
-        } else if (choice == 5) {
+        } else if (choice == M_CONF_APPLY_RETURN) {
           modified_cfg = 1;
-          cfg.font_size = settingsItems[2].value;
-          cfg.process_backslashes = settingsItems[3].value;
-          cfg.hide_ui = settingsItems[8].value;
+          cfg.font_size = settingsItems[M_CONF_CHECK_FONT_SMALL].value;
+          cfg.process_backslashes = settingsItems[M_CONF_CHECK_BACKSLASH].value;
+          cfg.hide_ui = settingsItems[M_CONF_HIDE_HUD].value;
+          cfg.draw_progressbar = settingsItems[M_CONF_DRAW_PROGRESSBAR].value;
           if (tmp_pictpath_settings_changed) {
           strcpy(cfg.bgpict_path,tmp_pictpath);
           cfg.use_bgpict = tmp_set_pictpath;
           }
-        } else if (choice == 7) {
-          complexMenuItem bgSettingsItems[] = {{1,1,0,"启用",0},{1,3,0,"选择图片",0},{1,0,0,"确定",0},{1,0,0,"取消",0},{0,0,0,NULL,0}};
+        } else if (choice == M_CONF_BGPICT_SETTINGS) {
+          complexMenuItem bgSettingsItems[N_M_BG];
+          register_menuitem_complex(&bgSettingsItems[M_BG_CHECK_ENABLED],1,1,0,"启用",0);
+          register_menuitem_complex(&bgSettingsItems[M_BG_CHOOSE_PICTURE],1,3,0,"选择图片",0);
+          register_menuitem_complex(&bgSettingsItems[M_BG_APPLY],1,0,0,"确定",0);
+          register_menuitem_complex(&bgSettingsItems[M_BG_DISMISS],1,0,0,"取消",0);
+          register_menuitem_complex(&bgSettingsItems[M_BG_LABEL_CURRENT_PICT],0,0,0,NULL,0);
           int choice;
           char new_tmp_pictpath[32];
           int new_tmp_set_pictpath;
@@ -141,27 +167,30 @@ void main(void) {
           Bdisp_AllClr_VRAM();
           DisplayStatusArea();
           drawDialog(5,29,376,193);
-          bgSettingsItems[0].value = new_tmp_set_pictpath;
+          bgSettingsItems[M_BG_CHECK_ENABLED].value = new_tmp_set_pictpath;
           char curr[64];
           sprintf(curr,"当前：%s",new_tmp_pictpath[0]?new_tmp_pictpath:"（无）");
           duplicateBackSlashes(curr);
-          bgSettingsItems[4].label = curr;
+          bgSettingsItems[M_BG_LABEL_CURRENT_PICT].label = curr;
           choice = flexibleMenu_complex(5,29-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,376-5+1-6,2,5,bgSettingsItems,5,1,1,1);
-          if (choice == 1) {
-            browseAndOpenFileI("\\\\fls0\\","*.*",new_tmp_pictpath);
-            /*TODO: Write a small procedure that checks whether it is a valid RAW VRAM file. It should be easy.*/
+          int fb_ret;
+          if (choice == M_BG_CHOOSE_PICTURE) {
+            fb_ret = browseAndOpenFileI("\\\\fls0\\","*.*",new_tmp_pictpath);
           }
-          new_tmp_set_pictpath = bgSettingsItems[0].value;
-          } while (choice != -1 && choice != 2 && choice != 3);
-          if (choice == 2) {tmp_pictpath_settings_changed = 1; strcpy(tmp_pictpath,new_tmp_pictpath); tmp_set_pictpath = new_tmp_set_pictpath;}
+          if (fb_ret != R_FB_PRESSED_EXIT) new_tmp_set_pictpath = bgSettingsItems[M_BG_CHECK_ENABLED].value;
+          } while (choice != MENU_DISCARDED && choice != M_BG_APPLY && choice != M_BG_DISMISS);
+          if (choice == M_BG_APPLY) {tmp_pictpath_settings_changed = 1; strcpy(tmp_pictpath,new_tmp_pictpath); tmp_set_pictpath = new_tmp_set_pictpath;}
         }
-        } while (choice != -1 && choice != 5 && choice != 6);
+        } while (choice != MENU_DISCARDED && choice != M_CONF_APPLY_RETURN && choice != M_CONF_DISMISS_RETURN);
        }
         break;
-        case 3:
-            infobox("Preader Alpha 0.1.1r2\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
+        case M_MAIN_ABOUT:
+            infobox("Preader Alpha 0.1.2\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
             break;
-        case -1:
+        case M_MAIN_MANAGE_SLOTS:
+            slot_manager();
+            break;
+        case MENU_DISCARDED:
             SaveAndOpenMainMenu();
             break;
     }
@@ -176,7 +205,7 @@ void main(void) {
     }
     
     }
-    if (reader_ret == 127) {
+    if (reader_ret == R_READER_STRAIGHT_EXIT) {
         SaveAndOpenMainMenu();
         reader_ret = 0;
     }

@@ -13,6 +13,42 @@ const char *SYM_triangle = "\xe6\x9e";
 const char *SYM_radiooff = "\xe6\xa3";
 const char *SYM_radioon = "\xe6\xa4";
 
+const int font_data[] = {
+120,204,204,204,204,204,204,204,204,204,204,204,120,0,0,0,
+112,48,48,48,48,48,48,48,48,48,48,48,48,0,0,0,
+248,12,12,12,24,48,96,192,192,192,192,192,252,0,0,0,
+248,12,12,12,12,56,12,12,12,12,12,12,248,0,0,0,
+192,204,204,204,204,252,12,12,12,12,12,12,12,0,0,0,
+252,192,192,192,192,248,12,12,12,12,12,12,248,0,0,0,
+120,192,192,192,192,248,204,204,204,204,204,204,120,0,0,0,
+252,204,12,12,24,24,24,48,48,48,48,48,48,0,0,0,
+120,204,204,204,204,120,204,204,204,204,204,204,120,0,0,0,
+120,204,204,204,204,204,124,12,12,12,12,12,120,0,0,0,
+252,192,192,192,192,240,192,192,192,192,192,192,252,0,0,0,
+120,204,204,204,204,204,204,204,204,204,204,204,120,0,0,0,
+252,192,192,192,192,240,192,192,192,192,192,192,192,0,0,0,
+204,204,204,216,24,56,48,112,96,108,204,204,204,0,0,0,
+};
+const char char_table[] = {'0','1','2','3','4','5','6','7','8','9','E','O','F','%'};
+
+const int large_font_data[] = {
+32760,65532,65532,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,65532,65532,32760,
+4032,4032,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,960,
+32760,65532,65532,57372,57372,57372,57372,28,28,28,28,28,60,124,248,496,992,1984,3968,7936,15872,31744,63488,61440,57344,57344,57344,57344,57344,65532,65532,65532,
+65532,65532,65532,28,28,28,28,28,60,124,248,496,992,1984,992,496,248,124,60,28,28,28,28,28,28,28,28,57372,57372,65532,65532,32760,
+57344,57344,57344,57344,57344,57344,57344,57344,57344,57344,57792,57792,57792,57792,65528,65528,65528,448,448,448,448,448,448,448,448,448,448,448,448,448,448,448,
+65532,65532,65532,57344,57344,57344,57344,57344,57344,57344,57344,57344,57344,57344,65528,65532,65532,28,28,28,28,28,28,28,28,28,28,28,28,65532,65532,65528,
+32764,65532,65532,57344,57344,57344,57344,57344,57344,57344,57344,57344,57344,57344,65528,65532,65532,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,32764,32764,32760,
+65532,65532,65532,60,60,56,120,120,120,112,240,240,240,224,224,480,480,448,448,448,960,896,896,896,1920,1792,3840,3840,3840,7680,7680,7680,
+32760,65532,65532,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,65532,32760,65532,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,32764,32764,32760,
+32760,65532,65532,57372,57372,57372,57372,57372,57372,57372,57372,57372,57372,65532,65532,32764,28,28,28,28,28,28,28,28,28,28,28,28,28,32764,32764,32760,
+};
+const char large_char_table[] = {
+'0','1','2','3','4','5','6','7','8','9',};
+
+#define SIZEOF_CHAR_TABLE 14
+#define SIZEOF_LARGE_CHAR_TABLE 10
+
 static short *vramaddr = NULL;
 int printMiniSingleLineInRestrictedLineWidth(int x, int y, char *str, int width, color_t fgcolor, color_t bgcolor, int transparentbg);
 int printCXYSingleLineInRestrictedLineWidth(int x, int y, char *str, int width, color_t fgcolor, color_t bgcolor, int transparentbg);
@@ -611,7 +647,7 @@ int msgbox(char *infomsg, char *title, int height, int statusbarenabled, color_t
     printMiniMultiLineNCutOffUnprintables(57,top-dh+18,infomsg,316-57+1,height/18-1,COLOR_BLACK,COLOR_WHITE,0);
     do {
         GetKey(&key);
-    } while (key != KEY_CTRL_EXIT && key != KEY_CTRL_EXE);
+    } while (key != KEY_CTRL_EXIT && key != KEY_CTRL_EXE && key != KEY_CTRL_F1);
     LoadVRAM_1();
     return key;
 }
@@ -622,4 +658,83 @@ void fatal_wip() {
 
 void info_wip() {
     infobox("（未实现）",38,1);
+}
+
+int info_error(char *infomsg, int height, int statusbarenabled)
+{
+    int key;
+    int dh = statusbarenabled?24:0;
+    int top = dh+(LCD_HEIGHT_PX-dh)/2-height/2-height%2;
+    int bottom = dh+(LCD_HEIGHT_PX-dh)/2+height/2;
+    SaveVRAM_1();
+    drawDialog(57,top,316,bottom);
+    printMiniSingleLineCutOffUnprintables(57,top-dh,"错误",316-57+1,COLOR_RED,COLOR_WHITE,0);
+    printMiniSingleLineCutOffUnprintables(58,top-dh,"错误",316-57,COLOR_RED,COLOR_WHITE,1);
+    printMiniMultiLineNCutOffUnprintables(57,top-dh+18,infomsg,316-57+1,height/18-1,COLOR_BLACK,COLOR_WHITE,0);
+    do {
+        GetKey(&key);
+    } while (key != KEY_CTRL_EXIT && key != KEY_CTRL_EXE);
+    LoadVRAM_1();
+    return key;
+}
+
+void register_menuitem_complex(complexMenuItem *i, char i1, int i2, int i3, char *i4, char i5) {
+    i->enabled = i1;
+    i->type = i2;
+    i->prop_index = i3;
+    i->label = i4;
+    i->value = i5;
+}
+
+void register_menuitem_normal(MenuItem *i, int i1, char *i2) {
+    i->enabled = i1;
+    i->label = i2;
+}
+
+void draw_custom_font_8x16(int x, int y, char *str, color_t color) {
+    static short *vram = NULL;
+    int flg = 0;
+    if (vram == NULL) vram = GetVRAMAddress();
+    while (str[flg]) {
+        int i = 0;
+        while (i < SIZEOF_CHAR_TABLE && char_table[i] != str[flg]) i++;
+        if (i == SIZEOF_CHAR_TABLE) {info_error("绘制自制字体字符串时出现未定义字符。",50,1); break;}
+        int dx,dy;
+        for (dy=0;dy<16;dy++) {
+            for (dx=0; dx<8; dx++) {
+                int ax = x+dx;
+                int ay = y+dy;
+                if (ax >= 0 && ax < 384 && ay >= 0 && ay <= 216) {
+                    if (0 <= ay && ay < 216 && 0 <= ax && ax < 384)
+                        if (font_data[i*16+dy] & (1<<(7-dx))) vram[ay*384+ax] = color; 
+                }
+            }
+        }
+        flg++;
+        x += 8;
+    }
+}
+
+void draw_custom_font_16x32(int x, int y, char *str, color_t color) {
+    static short *vram = NULL;
+    int flg = 0;
+    if (vram == NULL) vram = GetVRAMAddress();
+    while (str[flg]) {
+        int i = 0;
+        while (i < SIZEOF_LARGE_CHAR_TABLE && large_char_table[i] != str[flg]) i++;
+        if (i == SIZEOF_LARGE_CHAR_TABLE) {info_error("绘制自制字体字符串时出现未定义字符。",50,1); break;}
+        int dx,dy;
+        for (dy=0;dy<32;dy++) {
+            for (dx=0; dx<16; dx++) {
+                int ax = x+dx;
+                int ay = y+dy;
+                if (ax >= 0 && ax < 384 && ay >= 0 && ay <= 216) {
+                    if (0 <= ay && ay < 216 && 0 <= ax && ax < 384)
+                        if (large_font_data[i*32+dy] & (1<<(15-dx))) vram[ay*384+ax] = color; 
+                }
+            }
+        }
+        flg++;
+        x += 16;
+    }
 }

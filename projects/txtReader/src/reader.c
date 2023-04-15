@@ -10,7 +10,7 @@
 #include <preader/filedialog.h>
 #include <preader/textinput.h>
 #include <stdlib.h>
-
+#include "prdefinitions.h"
 
 typedef struct _shiori {
     long byte_location;
@@ -32,6 +32,7 @@ typedef struct _session_config {
     int  process_backslashes; // 0: Do not process backslashes (It will be treated as escape sequences)  1: process backslashes (\ -> \\)
     int  use_bgpict;
     int  hide_ui;
+    int  draw_progressbar; //0: Do not draw it  1: draw it
     char bgpict_path[32];
     BookRecord book_records[32];
     BookRecord *last_book;
@@ -70,8 +71,18 @@ typedef struct _paging_data_ver4 {
     int pages[8192];
 } PD4;
 
-int check_magic_paging(char *str);
+const static color_t progressbar_texture_blue[] = {
+48991,48991,24191,48991,17983,24191,7647,17983,7647,
+48991,48991,48991,24191,24191,17983,17983,7647,7647,
+};
 
+const static color_t progressbar_texture_gray[] = {
+40179,40179,40179,50744,40179,59164,50744,65535,65535,
+40179,40179,40179,40179,50744,50744,59164,59164,65535
+};
+
+int check_magic_paging(char *str);
+void rect_progressbar(int x1, int y1, int x2, color_t texture[]);
 extern SessionConfig cfg;
 extern int modified_cfg;
 
@@ -85,8 +96,8 @@ int read_book(char *fpath) {
         strcpy(pathbuf,fpath);
         duplicateBackSlashes(pathbuf);
         sprintf(errbuf,"打开文件%s时错误（ret=%d)\n请检查文件系统，并再试。",pathbuf,fhBookFileHandle);
-        infobox(errbuf,100,1);
-        return 255;
+        info_error(errbuf,100,1);
+        return R_READER_NXBOOK;
     }
 
     /* Goes into the main reading window now... */
@@ -104,7 +115,7 @@ int read_book(char *fpath) {
         infobox(parentdir,72,1);
         Bfile_CloseFile_OS(fhBookFileHandle);
         EnableGetkeyToMainFunctionReturn();
-        return 250;
+        return R_READER_INVALID_SUFFIX;
     }
     strcpy(pagedataname,"\\\\fls0\\");
     strcat(pagedataname,basename);
@@ -162,8 +173,8 @@ int read_book(char *fpath) {
         //never forget closing files!
         Bfile_ReadFile_OS(fhPageData,&current_page_data.hdr,sizeof(current_page_data.hdr),0);
         if (!check_magic_paging(current_page_data.hdr.magic)) {
-            Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除分页文件，再使用本软件重建分页文件。",100,1);
-            EnableGetkeyToMainFunctionReturn();return 254;
+            Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); info_error("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除分页文件，再使用本软件重建分页文件。",100,1);
+            EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
         }
         int filesize;
         switch(current_page_data.hdr.version) {
@@ -178,18 +189,18 @@ int read_book(char *fpath) {
             case 4:
             filesize = sizeof(PD4);break;
             default: Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（版本错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);
-            EnableGetkeyToMainFunctionReturn();return 254;
+            EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
         }
         int real_filesize = Bfile_GetFileSize_OS(fhPageData);
         if (real_filesize != filesize) {
             Bfile_CloseFile_OS(fhBookFileHandle);
             Bfile_CloseFile_OS(fhPageData);
-            infobox("不正确的分页文件（大小错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return 254;
+            infobox("不正确的分页文件（大小错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
         }
         if (current_page_data.hdr.font != cfg.font_size) {
             Bfile_CloseFile_OS(fhBookFileHandle);
             Bfile_CloseFile_OS(fhPageData);
-            infobox("不正确的分页文件（对应字体错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return 254;
+            infobox("不正确的分页文件（对应字体错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
         }
         Bfile_ReadFile_OS(fhPageData,&current_page_data,filesize,0);
         Bfile_CloseFile_OS(fhPageData);
@@ -209,7 +220,7 @@ int read_book(char *fpath) {
 
     /* Check whether there is a record for this book in the session config. */
     int index_cfg = -1;
-    for (int i=0; i<cfg.n_book_records; i++) {
+    for (int i=0; i<32; i++) {
         if (strcmp(cfg.book_records[i].book_path,fpath) == 0) {
             index_cfg = i; break;
         }
@@ -218,8 +229,10 @@ int read_book(char *fpath) {
         if (cfg.n_book_records < 32) {
             /* Adds the record. */
             modified_cfg = 1;
-            index_cfg = cfg.n_book_records;
-            cfg.n_book_records++;
+            index_cfg = 0;
+            while (index_cfg < 32 && cfg.book_records[index_cfg].book_path[0]) index_cfg++; //Looks for the first empty slot
+            if (index_cfg == 32) {info_error("配置文件空间声称剩余空间与实际剩余空间不一致。\n此书仍可以阅读，但无法保存书签及最后阅读的位置。\n请考虑重建配置文件。",100,1); index_cfg = -1;}
+             else {cfg.n_book_records++;
             strcpy(cfg.book_records[index_cfg].book_path,fpath);
             cfg.book_records[index_cfg].last_location = 0;
             cfg.book_records[index_cfg].bookmark_version = cfg.font_size;
@@ -227,6 +240,7 @@ int read_book(char *fpath) {
                 cfg.book_records[index_cfg].bookmarks[i].byte_location = -1;
                 cfg.book_records[index_cfg].bookmarks[i].page_location = -1;
             }
+             }
         } else {
             infobox("配置文件空间已满，无法添加此书的记录。\n此书仍可以阅读，但无法保存书签及最后阅读的位置。\n请考虑重建配置文件。",100,1);
         }
@@ -278,7 +292,8 @@ int read_book(char *fpath) {
         if (fsize != 384*216*2) {
             Bfile_CloseFile_OS(bgImageFileFh);
             Bfile_CloseFile_OS(fhBookFileHandle);
-            fatal_error("指定的图片文件大小错误。",64,1);
+            info_error("指定的图片文件大小错误。\n请重新选择一个图片。",100,1);
+            return R_READER_INVALID_BGPICT;
         }
     }
 
@@ -310,6 +325,34 @@ int read_book(char *fpath) {
         FKey_Display(0,fkey_menu);
         FKey_Display(1,fkey_jump);
         }
+        /* Drawing the progress bar */
+        if (cfg.draw_progressbar) {
+            if (cfg.hide_ui) {
+                rect(3,198,357,208,COLOR_BLACK);
+                //rect(4,199,356,207,COLOR_WHITE);
+                rect_progressbar(4,199,356,progressbar_texture_gray);
+                int d_pix = 3+(356-4+1)*(current_page+1)/(current_page_data.hdr.n_pages_avail);
+                //rect(4,199,d_pix>356?356:d_pix,207,0xBF7D);
+                rect_progressbar(4,199,d_pix>356?356:d_pix,progressbar_texture_blue);
+            } else {
+                rect(129,198,357,208,COLOR_BLACK);
+                //rect(130,199,356,207,COLOR_WHITE);
+                rect_progressbar(130,199,356,progressbar_texture_gray);
+                int d_pix = 130+(356-130+1)*(current_page+1)/(current_page_data.hdr.n_pages_avail);
+                //rect(130,199,d_pix>356?356:d_pix,207,0xBF7D);
+                rect_progressbar(130,199,d_pix>356?356:d_pix,progressbar_texture_blue);
+            }
+            char sbuf[8] = {0};
+            int percentage = 100 * (current_page + 1) / current_page_data.hdr.n_pages_avail;
+            if (percentage != 100)
+                sprintf(sbuf,"%d%%",percentage);
+            else
+                strcpy(sbuf,"EOF");
+            if (percentage >= 10)
+                draw_custom_font_8x16(359,198,sbuf,COLOR_BLACK);
+            else
+                draw_custom_font_8x16(359+8,198,sbuf,COLOR_BLACK);
+        }
         GetKey(&key);
         MenuItem menu_f1[] = {1,"显示文件信息",1,"立即重建分页文件",1,"清除此书所有书签",1,"返回主菜单",1,"退出程序"};
         MenuItem menu_f2[] = {1,"按页数",1,"到书签",1,"存储到书签…",1,"删除书签…"};
@@ -320,7 +363,7 @@ int read_book(char *fpath) {
                 in_reading = 0; break;
             case KEY_CTRL_F1: case KEY_CTRL_MENU:
                 drawDialog(20,42,361,189);
-                opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,4,menu_f1,4,0,1,0);
+                opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,5,menu_f1,5,0,1,0);
                 if (opt_ret == 0) {    char buf[128];
     sprintf(buf,"文件路径：%s\n文件句柄：%d\n文件大小：%d字节\n文件页数：%d\n当前页码：%d\n配置文件槽位：%d",filename_real,fhBookFileHandle, Bfile_GetFileSize_OS(fhBookFileHandle),current_page_data.hdr.n_pages_avail,current_page+1,index_cfg);
     if (getSystemLanguage() != 5)
@@ -340,6 +383,12 @@ int read_book(char *fpath) {
                 }
                 if (opt_ret == 3) in_reading = 0;
                 if (opt_ret == 4) {in_reading = 0; quit = 1;}
+                if (cfg.use_bgpict)
+                {
+                    Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
+                    SaveVRAM_1();
+                    /* Some function might have modified Secondary VRAM. We need to read it again. */
+                }
                 break;
             case KEY_CTRL_F2:
                 drawDialog(20,42,361,189);
@@ -427,6 +476,12 @@ int read_book(char *fpath) {
                             }
                             drawDialog(50,66,329,197);
                             int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
+                            if (cfg.use_bgpict)
+                            {
+                                Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
+                                SaveVRAM_1();
+                                /* Some function might have modified Secondary VRAM. We need to read it again. */
+                            }
                             if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = -1;
                             cfg.book_records[index_cfg].bookmarks[choice].page_location = -1;
                             }
@@ -438,6 +493,12 @@ int read_book(char *fpath) {
                     default:
                     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
                     break;
+                }
+                if (cfg.use_bgpict)
+                {
+                    Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
+                    SaveVRAM_1();
+                    /* Some function might have modified Secondary VRAM. We need to read it again. */
                 }
                 break;
             case KEY_CTRL_EXE: case KEY_CTRL_RIGHT:
@@ -461,14 +522,6 @@ int read_book(char *fpath) {
                     current_page = current_page_data.hdr.n_pages_avail - 1;
                 break;
         }
-        if (key != KEY_CTRL_DOWN && key != KEY_CTRL_UP && key != KEY_CTRL_LEFT && key != KEY_CTRL_RIGHT) {
-            if (cfg.use_bgpict)
-            {
-                Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
-                SaveVRAM_1();
-                /* Some function might have modified Secondary VRAM. We need to read it again. */
-            }
-        }
     }
     if (index_cfg != -1)
     {
@@ -483,9 +536,9 @@ int read_book(char *fpath) {
     DefineStatusMessage("",0,TEXT_COLOR_BLACK,0);
     EnableGetkeyToMainFunctionReturn();
     if (quit)
-        return 127;
+        return R_READER_STRAIGHT_EXIT;
     else
-        return 0;
+        return R_SUCCESS;
     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
 }
 
@@ -649,4 +702,21 @@ int page_immediately(int handle, char *fpath, SessionConfig *config) {
     Bfile_CloseFile_OS(fhImmediatePageFileHandle);
     infobox("重建成功。\n请重新进入以查看效果。",56,1);
     return 0;
+}
+
+void rect_progressbar(int x1, int y1, int x2, color_t texture[]) {
+    static short *vram = NULL;
+    if (vram == NULL) vram = GetVRAMAddress();
+    if (x1<0 || x2<0) return R_INVALID;
+    if (x1>=384 || x2>=384) return R_INVALID;
+    if (y1<0) return R_INVALID;
+    if (y1+8 >= 216) return R_INVALID;
+    if (x1>x2) return R_INVALID;
+    int dx = x2 - x1 + 1;
+    for (int cy=0; cy<9; cy++) {
+        for (int cx=0; cx<dx; cx++) {
+            vram[(y1+cy)*384+x1+cx] = texture[(cx%2)*9+cy];
+        }
+    }
+    return R_SUCCESS;
 }
