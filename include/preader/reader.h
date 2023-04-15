@@ -21,6 +21,7 @@ typedef struct _session_config {
     int  process_backslashes; // 0: Do not process backslashes (It will be treated as escape sequences)  1: process backslashes (\ -> \\)
     int  use_bgpict;
     int  hide_ui;
+    int  draw_progressbar; //0: Do not draw it  1: draw it
     char bgpict_path[32];
     BookRecord book_records[32];
     BookRecord *last_book;

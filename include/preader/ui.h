@@ -59,5 +59,10 @@ extern void fatal_error(char *errmsg, int height, int statusbarenabled);
 extern int infobox(char *infomsg, int height, int statusbarenabled);
 extern void fatal_wip();
 extern void info_wip();
+extern int info_error(char *infomsg, int height, int statusbarenabled);
 extern int msgbox(char *infomsg, char *title, int height, int statusbarenabled, color_t titlecolor);
+extern void register_menuitem_complex(complexMenuItem *i, char i1, int i2, int i3, char *i4, char i5);
+extern void register_menuitem_normal(MenuItem *i, int i1, char *i2);
+extern void draw_custom_font_8x16(int x, int y, char *str, color_t color);
+extern void draw_custom_font_16x32(int x, int y, char *str, color_t color);
 #endif
