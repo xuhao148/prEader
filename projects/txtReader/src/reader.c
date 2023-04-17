@@ -4,6 +4,7 @@
 #include <preader/filedialog.h>
 #include <string.h>
 #include <fxcg/file.h>
+#include <fxcg/rtc.h>
 #include <stdio.h>
 #include <preader/i18n.h>
 #include <extra_calls.h>
@@ -11,6 +12,8 @@
 #include <preader/textinput.h>
 #include <stdlib.h>
 #include "prdefinitions.h"
+
+static color_t fgcolor,bgcolor;
 
 typedef struct _shiori {
     long byte_location;
@@ -32,10 +35,12 @@ typedef struct _session_config {
     int  process_backslashes; // 0: Do not process backslashes (It will be treated as escape sequences)  1: process backslashes (\ -> \\)
     int  use_bgpict;
     int  hide_ui;
+    unsigned int  extra_settings;
     int  draw_progressbar; //0: Do not draw it  1: draw it
     char bgpict_path[32];
     BookRecord book_records[32];
     BookRecord *last_book;
+    color_t color_scheme[N_COLORS];
 } SessionConfig;
 
 
@@ -87,18 +92,9 @@ extern SessionConfig cfg;
 extern int modified_cfg;
 
 int read_book(char *fpath) {
+    EnableStatusArea(3);
     short wszFilePath[128];
     Bfile_StrToName_ncpy(wszFilePath,fpath,64);
-    int fhBookFileHandle = Bfile_OpenFile_OS(wszFilePath,READ,0);
-    if (fhBookFileHandle < 0) {
-        char errbuf[256];
-        char pathbuf[72];
-        strcpy(pathbuf,fpath);
-        duplicateBackSlashes(pathbuf);
-        sprintf(errbuf,"打开文件%s时错误（ret=%d)\n请检查文件系统，并再试。",pathbuf,fhBookFileHandle);
-        info_error(errbuf,100,1);
-        return R_READER_NXBOOK;
-    }
 
     /* Goes into the main reading window now... */
     DisableGetkeyToMainFunctionReturn();
@@ -113,11 +109,10 @@ int read_book(char *fpath) {
     if (strcmp(suffix,"txt") && strcmp(suffix,"TXT")) {
         sprintf(parentdir,"不支持的后缀（.%s）。\n请选择其它文件。",suffix);
         infobox(parentdir,72,1);
-        Bfile_CloseFile_OS(fhBookFileHandle);
         EnableGetkeyToMainFunctionReturn();
         return R_READER_INVALID_SUFFIX;
     }
-    strcpy(pagedataname,"\\\\fls0\\");
+    strcpy(pagedataname,"\\\\fls0\\@PRDR\\");
     strcat(pagedataname,basename);
     strcat(pagedataname,".");
     if (cfg.font_size) {
@@ -132,6 +127,16 @@ int read_book(char *fpath) {
         unsigned short wszPageDataPath[128];
         Bfile_StrToName_ncpy(wszPageDataPath,pagedataname,64);
         fhPageData = Bfile_OpenFile_OS(wszPageDataPath,READ,0);
+    }
+    int fhBookFileHandle = Bfile_OpenFile_OS(wszFilePath,READ,0);
+    if (fhBookFileHandle < 0) {
+        char errbuf[256];
+        char pathbuf[72];
+        strcpy(pathbuf,fpath);
+        duplicateBackSlashes(pathbuf);
+        sprintf(errbuf,"打开文件%s时错误（ret=%d)\n请检查文件系统，并再试。",pathbuf,fhBookFileHandle);
+        info_error(errbuf,100,1);
+        return R_READER_NXBOOK;
     }
     PD4 current_page_data = {{{'P','A','G','D','T','A'},-1,-1,cfg.font_size}};
     if (fhPageData < 0) {
@@ -303,19 +308,58 @@ int read_book(char *fpath) {
         Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
         SaveVRAM_1();
     }
-    EnableStatusArea(cfg.hide_ui?3:0);
     /* Start the reading loop. */
-    DefineStatusAreaFlags(1,0,0,0);
+    //DefineStatusAreaFlags(1,0,0,0);
+
+    bgcolor = cfg.color_scheme[CI_READER_BG];
+    fgcolor = cfg.color_scheme[CI_READER_FG];
+
     while (in_reading) {
         Bdisp_AllClr_VRAM();
+        rect(0,0,383,215,bgcolor);
+        /*
         if (index_cfg == -1)
             sprintf(status_msg,"[!] %s %d/%d %d%%",filename_real,current_page+1,current_page_data.hdr.n_pages_avail,100*(current_page+1)/current_page_data.hdr.n_pages_avail);
         else
             sprintf(status_msg,"[%d] %s %d/%d %d%%",index_cfg,filename_real,current_page+1,current_page_data.hdr.n_pages_avail,100*(current_page+1)/current_page_data.hdr.n_pages_avail);
         DefineStatusMessage(status_msg,0,TEXT_COLOR_BLACK,0);
+        */
         if (cfg.use_bgpict) LoadVRAM_1();
         if (!cfg.hide_ui)
-            DisplayStatusArea();
+        {
+            /* Draws the status area manually. */
+            rect(0,0,383,19,cfg.color_scheme[CI_MENU_BG_CHOSEN]);
+            rect(6,1,23,17,cfg.color_scheme[CI_MENU_FG_UNAVAIL]);
+            char buf[8];
+            sprintf(buf,"%d",index_cfg+1);
+            if (index_cfg >= 9)
+                draw_custom_font_8x16(8,3,buf,cfg.color_scheme[CI_MENU_FG_CHOSEN]);
+            else if (0 <= index_cfg && index_cfg <= 8)
+                draw_custom_font_8x16(12,3,buf,cfg.color_scheme[CI_MENU_FG_CHOSEN]);
+            else if (index_cfg < 0) {
+                rect(13,2,11,6,cfg.color_scheme[CI_MENU_FG_CHOSEN]);
+                rect(14,7,10,11,cfg.color_scheme[CI_MENU_FG_CHOSEN]);
+                rect(14,14,10,16,cfg.color_scheme[CI_MENU_FG_CHOSEN]);
+            }
+            Bdisp_MMPrint(27,2,fpath,0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
+            rect(203,0,383,19,cfg.color_scheme[CI_MENU_FG_UNAVAIL]);
+            sprintf(buf,"%d",current_page+1);
+            Bdisp_MMPrint(206,2,buf,0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
+            rect(245,0,383,19,cfg.color_scheme[CI_MENU_FG_UNAVAIL]);
+            Bdisp_MMPrint(245,2,"/",0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_BG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
+            sprintf(buf,"%d",current_page_data.hdr.n_pages_avail);
+            Bdisp_MMPrint(253,2,buf,0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
+            rect(294,0,383,19,cfg.color_scheme[CI_MENU_FG_UNAVAIL]);
+            int percentage = (current_page+1) * 1000 / current_page_data.hdr.n_pages_avail;
+            int dot = percentage % 10;
+            percentage /= 10;
+            sprintf(buf,"%d.%d%%",percentage,dot);
+            Bdisp_MMPrint(293,2,buf,0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
+            unsigned int h,m,s,ms;
+            RTC_GetTime(&h,&m,&s,&ms);
+            sprintf(buf,"%d%d:%d%d",(h&0xF0)>>4,(h&0x0F),(m&0xF0)>>4,(m&0x0F));
+            Bdisp_MMPrint(342,2,buf,0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
+        }
         draw_one_page(fhBookFileHandle,current_page_data.pages[current_page],cfg.font_size,0,cfg.process_backslashes);
         void *fkey_menu;
         void *fkey_jump;
@@ -363,7 +407,8 @@ int read_book(char *fpath) {
                 in_reading = 0; break;
             case KEY_CTRL_F1: case KEY_CTRL_MENU:
                 drawDialog(20,42,361,189);
-                opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,5,menu_f1,5,0,1,0);
+rect(20,42,361,189,cfg.color_scheme[CI_MENU_BG]);
+                opt_ret = flexibleMenu(20,42-24,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,361-42+1,2,5,menu_f1,5,0,1,0);
                 if (opt_ret == 0) {    char buf[128];
     sprintf(buf,"文件路径：%s\n文件句柄：%d\n文件大小：%d字节\n文件页数：%d\n当前页码：%d\n配置文件槽位：%d",filename_real,fhBookFileHandle, Bfile_GetFileSize_OS(fhBookFileHandle),current_page_data.hdr.n_pages_avail,current_page+1,index_cfg);
     if (getSystemLanguage() != 5)
@@ -392,7 +437,8 @@ int read_book(char *fpath) {
                 break;
             case KEY_CTRL_F2:
                 drawDialog(20,42,361,189);
-                opt_ret = flexibleMenu(20,42-24,COLOR_WHITE,0,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,361-42+1,2,4,menu_f2,4,0,1,0);
+rect(20,42,361,189,cfg.color_scheme[CI_MENU_BG]);
+                opt_ret = flexibleMenu(20,42-24,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,361-42+1,2,4,menu_f2,4,0,1,0);
                 switch (opt_ret) {
                     case 0:
                     {
@@ -431,7 +477,8 @@ int read_book(char *fpath) {
                                 }
                             }
                             drawDialog(50,66,329,197);
-                            int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
+rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
+                            int choice = flexibleMenu(50,66-24,cfg.color_scheme[CI_MENU_BG],1,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
                             if (choice >= 0) current_page = cfg.book_records[index_cfg].bookmarks[choice].page_location;
                         }
                     }
@@ -448,7 +495,8 @@ int read_book(char *fpath) {
                                 }
                             }
                             drawDialog(50,66,329,197);
-                            int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,0,1,1);
+rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
+                            int choice = flexibleMenu(50,66-24,cfg.color_scheme[CI_MENU_BG],1,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,329-50+1-6,1,8,bookmarks,7,0,1,1);
                             if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = current_page_data.pages[current_page];
                             cfg.book_records[index_cfg].bookmarks[choice].page_location = current_page;
                             Bfile_ReadFile_OS(fhBookFileHandle,cfg.book_records[index_cfg].bookmarks[choice].preview,15,current_page_data.pages[current_page]); }
@@ -475,7 +523,8 @@ int read_book(char *fpath) {
                                 }
                             }
                             drawDialog(50,66,329,197);
-                            int choice = flexibleMenu(50,66-24,COLOR_WHITE,1,COLOR_BLACK,COLOR_RED,COLOR_GRAY,COLOR_CYAN,0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
+rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
+                            int choice = flexibleMenu(50,66-24,cfg.color_scheme[CI_MENU_BG],1,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
                             if (cfg.use_bgpict)
                             {
                                 Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
@@ -534,6 +583,8 @@ int read_book(char *fpath) {
     Bfile_CloseFile_OS(fhBookFileHandle);
     Bfile_CloseFile_OS(bgImageFileFh);
     DefineStatusMessage("",0,TEXT_COLOR_BLACK,0);
+    DefineStatusAreaFlags(1,0,0,0);
+    EnableStatusArea(0);
     EnableGetkeyToMainFunctionReturn();
     if (quit)
         return R_READER_STRAIGHT_EXIT;
@@ -551,7 +602,7 @@ int read_book(char *fpath) {
    Arg. font determines the font size. 0 for large font, 1 for small font.
    Returns the offset of next character after this page. If this is the last page, returns -1.*/
 int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_black_slashes) {
-    char linebuf[513] = {0}; /*Buffer for drawing a single line.*/
+    unsigned char linebuf[513] = {0}; /*Buffer for drawing a single line.*/
     int maxline = font?9:7;
     int filesize = Bfile_GetFileSize_OS(filehandle);
     int size_to_read = 256;
@@ -561,6 +612,14 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
     for (int l=0; l<maxline && !this_is_the_last_line; l++) {
         if (offset + current_line_offset+ size_to_read >= filesize) {size_to_read = filesize-offset-current_line_offset;}
         Bfile_ReadFile_OS(filehandle,linebuf,size_to_read,offset+current_line_offset);
+        if (cfg.extra_settings&BS_USE_STRICT_RENDERER) {
+            for (int i=0; i<size_to_read; i++) {
+                unsigned char current_ch = linebuf[i];
+                if (current_ch == 0x00 || current_ch == 0x09) linebuf[i]=0x20;
+                else if (current_ch < 0x20 && current_ch != 0x0D && current_ch != 0x0A) linebuf[i] ='?';
+                else if (current_ch >= 0x80 && current_ch <= 0x1F || current_ch == 0xFF) linebuf[i] = '_';
+            }
+        }
         linebuf[size_to_read] = 0;
         if (process_black_slashes) duplicateBackSlashes(linebuf);
         int i;
@@ -587,13 +646,13 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
             x = 0; y = 18 * l;
             if (!dryrun) {
             ProcessPrintChars(936);
-            PrintMini(&x,&y,linebuf,0x02,-1,0,0,COLOR_BLACK,COLOR_WHITE,1,0);
+            PrintMini(&x,&y,linebuf,0x02,-1,0,0,fgcolor,bgcolor,1,0);
             ProcessPrintChars(0);
             }
         } else {
             if (!dryrun) {
             ProcessPrintChars(936);
-            PrintCXY(0,24*l,linebuf,0x20,-1,COLOR_BLACK,COLOR_WHITE,1,0);
+            PrintCXY(0,24*l,linebuf,0x20,-1,fgcolor,bgcolor,1,0);
             ProcessPrintChars(0);
             }
         }

@@ -4,8 +4,12 @@
 #include <stddef.h>
 #include <extra_calls.h>
 #include <string.h>
+#include "prdefinitions.h"
+#include <preader/reader.h>
 
 #define AT(x,y) &vramaddr[(y)*384+(x)]
+
+extern SessionConfig cfg;
 
 const char *SYM_checked = "\xe6\xa9";
 const char *SYM_unchecked = "\xe6\xa5";
@@ -72,6 +76,12 @@ typedef struct _menuitem_complex {
         2 - Radiobutton menu item. Whether user changes the item or not, it will be included in the result array, with value
             {type:2, index:[prop_index of the item], value:[array subscription of the item]}
         3 - Menu item with black triangle on the right. When user chooses the item, its result will be {type:0,value:[prop_index]}
+        4 - Standard menu item, but with forced small font whenever the original one is.]
+        5 - Slider. Extra properties is typed sliderProperties, see below.
+        6 - Color Viewer. prop_index is used as style settings:
+            0 - A label on the left and a color block on the right.
+            1 - A label with colored bg and white text (Black text when in white color).
+            2 - Text colored in the corresponding color.
      */
     int type;
     /*
@@ -83,16 +93,32 @@ typedef struct _menuitem_complex {
     /* Note that the label will be cut off if when is too long. */
     char *label;
     /* Checkbox items and radiobutton items use it; 0 for off and 1 for on */
-    char value;
+    int value;
+    /* A pointer to a data structure determined by its type. */
+    void *item_based_properties;
 } complexMenuItem;
 
+typedef struct _callback_data {
+    int current_scope;
+    int current_item_on_screen;
+} callbackData;
+
+typedef struct _slider_properties {
+    int min;
+    int max;
+    int step;
+    int label_width;
+    int value_width;
+    char show_label;
+    char show_value;
+} sliderProperties;
 
 /* Draws a simple dialog with gray shadow under it. */
 void drawDialog(int x1, int y1, int x2, int y2) {
     if (vramaddr == NULL) vramaddr = GetVRAMAddress();
-    rect(x1+1,y1+2,x2+3,y2+4,COLOR_GRAY); /* Shadow */
-    rect(x1-1,y1-1,x2+1,y2+1,COLOR_BLACK); /* Border */
-    rect(x1,y1,x2,y2,COLOR_WHITE); /* Panel */
+    rect(x1+1,y1+2,x2+3,y2+4,cfg.color_scheme[CI_DIALOG_SHADOW]); /* Shadow */
+    rect(x1-1,y1-1,x2+1,y2+1,cfg.color_scheme[CI_DIALOG_BORDER]); /* Border */
+    rect(x1,y1,x2,y2,cfg.color_scheme[CI_DIALOG_BG]); /* Panel */
     Bdisp_PutDisp_DD();
 }
 
@@ -247,8 +273,7 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                  int fontsize, color_t txtcolor, color_t txtcolorhi, color_t txtunavail,
                  color_t bgcolorhi, int theme, int itemwidth, int linespace, int n_items,
                  complexMenuItem entries[], int items_in_screen, int defaultitem, int isStatusBarOn,
-                 int usescrollbar
-                 )
+                 int usescrollbar, int (*callback_agent)(complexMenuItem *, callbackData *, int *), void (*callback_memopt)(complexMenuItem *, int, int))
 {
     SaveVRAM_1();
     int key;
@@ -352,12 +377,96 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                         break;
                 }
             /* Draws the main text */
-            if (fontsize == 1)
+            if (entries[current_scope+i].type >= 0 && entries[current_scope+i].type <= 4)
+            if (fontsize == 1 || entries[current_scope+i].type == 4)
             {
                 printMiniSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth+dwidth,txtcolor_s,bgcolor,1);
             } else {
                 printCXYSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth+dwidth,txtcolor_s,bgcolor,1);
+            } else {
+                
+                /* Special controls */
+                int itemType = entries[current_scope+i].type;
+                int itemProp = entries[current_scope+i].prop_index;
+                switch (itemType) {
+                    case TMC_SLIDER:
+                        {
+                        /* Clears the bg */
+                        rect(left,top+rect_y_offset+i*itemheight_with_linespace,left+itemwidth-1,top+rect_y_offset+i*itemheight_with_linespace+fontheight-1,bgcolor);
+                        sliderProperties *props = entries[current_scope+i].item_based_properties;
+                        int realBarLeft = left + 3 + 1, realBarRight = left + itemwidth - 1 - 4, realBarTop = top+i*itemheight_with_linespace+(fontsize?8:10), realBarBottom = top+i*itemheight_with_linespace+(realBarBottom = fontsize?8:12);
+                        realBarTop += 24;
+                        realBarBottom += 24;
+                        if (props->show_label) {
+                            if (fontsize)
+                                printMiniSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,props->label_width,txtcolor,bgcolor,1);
+                            else
+                                printCXYSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,props->label_width,txtcolor,bgcolor,1);
+                            realBarLeft += props->label_width;
+                        }
+                        if (props->show_value) {
+                            realBarRight -= props->value_width;
+                            char buf[64];
+                            sprintf(buf,"%d",entries[current_scope+i].value);
+                            if (fontsize)
+                                printMiniSingleLineInRestrictedLineWidth(realBarRight+1,top+i*itemheight_with_linespace,buf,props->value_width,txtcolor,bgcolor,1);
+                            else
+                                printCXYSingleLineInRestrictedLineWidth(realBarRight+1,top+i*itemheight_with_linespace,buf,props->value_width,txtcolor,bgcolor,1);
+                        }
+                        
+                        /* Drawing the slider */
+                        /* Border */
+                        rect(realBarLeft-1,realBarTop-1,realBarRight+1,realBarBottom+1,cfg.color_scheme[CI_MENU_FG]);
+                        /* Background */
+                        rect(realBarLeft,realBarTop,realBarRight,realBarBottom,52959);
+                        /* Foreground */
+                        int realBarLastPixel = realBarLeft+(realBarRight-realBarLeft)*(entries[current_scope+i].value-props->min)/(props->max-props->min);
+                        rect(realBarLeft,realBarTop,realBarLastPixel,realBarBottom,25823);
+                        /* Knob */
+                        color_t knobBorder = (current_item_on_screen==current_scope+i)?cfg.color_scheme[CI_MENU_FG_CHOSEN]:cfg.color_scheme[CI_MENU_FG];
+                        color_t knobBg = (current_item_on_screen==current_scope+i)?cfg.color_scheme[CI_MENU_BG_CHOSEN]:COLOR_WHITE;
+                        if (fontsize) {
+                            rect(realBarLastPixel-1,realBarTop-2,realBarLastPixel+2,realBarBottom+2,knobBorder);
+                            rect(realBarLastPixel,realBarTop-1,realBarLastPixel+1,realBarBottom+1,knobBg);
+                        } else {
+                            rect(realBarLastPixel-2,realBarTop-2,realBarLastPixel+3,realBarBottom+2,knobBorder);
+                            rect(realBarLastPixel-1,realBarTop-1,realBarLastPixel+2,realBarBottom+1,knobBg);
+                        }
+                        }
+                        break;
+                    case TMC_COLORVIEW:
+                        switch (itemProp) {
+                            case 1:
+                                if (fontsize) {
+                                    printMiniSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth,(entries[current_scope+i].value==COLOR_WHITE)?COLOR_BLACK:COLOR_WHITE,entries[current_scope+i].value,0);
+                                } else {
+                                    printCXYSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth,(entries[current_scope+i].value==COLOR_WHITE)?COLOR_BLACK:COLOR_WHITE,entries[current_scope+i].value,0);
+                                }
+                                break;
+                            case 2:
+                                if (fontsize) {
+                                    printMiniSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth,entries[current_scope+i].value,bgcolor,1);
+                                } else {
+                                    printCXYSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth,entries[current_scope+i].value,bgcolor,1);
+                                }
+                                break;
+                            case 0: default:
+                            if (fontsize) {
+                                printMiniSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth-45,txtcolor_s,bgcolor,1);
+                                rect(left+itemwidth-36-1,top+i*itemheight_with_linespace+24+3-1,left+itemwidth-5+1,top+i*itemheight_with_linespace+24+15+1,COLOR_BLACK);
+                                rect(left+itemwidth-36,top+i*itemheight_with_linespace+24+3,left+itemwidth-5,top+i*itemheight_with_linespace+24+15,entries[current_scope+i].value);
+                            } else {
+                                printCXYSingleLineInRestrictedLineWidth(left,top+i*itemheight_with_linespace,entries[current_scope+i].label,itemwidth-60,txtcolor_s,bgcolor,1);
+                                rect(left+itemwidth-51-1,top+i*itemheight_with_linespace+24+5-1,left+itemwidth-6+1,top+i*itemheight_with_linespace+24+19+1,COLOR_BLACK);
+                                rect(left+itemwidth-51,top+i*itemheight_with_linespace+24+5,left+itemwidth-6,top+i*itemheight_with_linespace+24+19,entries[current_scope+i].value);
+                            }
+                                break;
+                        }
+                }
+
             }
+            
+            
             }
         }
         /*
@@ -378,11 +487,21 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
             csb.barwidth = 6;
             Scrollbar(&csb);
         }
-
+        int callback_ret = R_CALLBACK_NORMAL;
+        /* Callback function is called before waiting for the next input */
+        if (callback_agent != NULL) {
+            callbackData cd;
+            cd.current_item_on_screen = current_item_on_screen;
+            cd.current_scope = current_scope;
+            callback_ret = (*callback_agent)(entries,&cd,&key);
+        }
+        if (callback_ret == R_CALLBACK_BREAK) return R_MENU_INTERRUPTED;
         /* Controls key operations. This uses getkey, thus allowing user to return to MENU.
         Therefore, remember closing all your files before invoking a menu! (Or invoke DisableMenuBlahblah)*/
-
-        GetKey(&key);
+        if (callback_ret == R_CALLBACK_NORMAL)
+            GetKey(&key);
+        if (callback_ret == R_CALLBACK_NORMAL || callback_ret == R_CALLBACK_OVERRIDE_KEY)
+        {
         int current_item;
         switch (key) {
             case KEY_CTRL_DOWN:
@@ -419,23 +538,78 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                 /* Where things gets complicated...*/
                 current_item = current_item_on_screen + current_scope;
                 switch (entries[current_item].type) {
-                    case 0:case 3:
+                    case 0:case 3:case 4:case 6:
+                    LoadVRAM_1();
                     return current_item;
                     case 1:
-                    entries[current_item].value = 1 - entries[current_item].value;break;
+                    entries[current_item].value = 1 - entries[current_item].value;
+                    if (callback_memopt) {
+                        (*callback_memopt)(entries,current_item,entries[current_item].value);
+                    }
+                    break;
                     case 2:
                     for (int i=0; i<n_items; i++) {
                         if (entries[i].type == 2 && entries[i].prop_index == entries[current_item].prop_index) {
                             if (i == current_item) entries[i].value = 1;
                             else entries[i].value = 0;
                         }
+                        if (callback_memopt) {
+                            (*callback_memopt)(entries,i,entries[i].value);
+                        }
                     }
                     break;
-                    default: LoadVRAM_1();return -1;
+                    case 5:
+                    break;
+                    default: LoadVRAM_1(); return -1;
+                }
+                break;
+            case KEY_CTRL_RIGHT:
+                current_item = current_item_on_screen + current_scope;
+                switch (entries[current_item].type) {
+                    case TMC_TRIANGLE:
+                        return current_item;
+                    case TMC_SLIDER:
+                        {
+                        sliderProperties *prop = entries[current_item].item_based_properties;
+                        int val = entries[current_item].value;
+                        int max = prop->max;
+                        int min = prop->min;
+                        int step = prop->step;
+                        val += step;
+                        if (val > max) val = max;
+                        if (val < min) val = min;
+                        entries[current_item].value = val;
+                        if (callback_memopt) {
+                            (*callback_memopt)(entries,current_item,entries[current_item].value);
+                        }
+                        }
+                        break;
+                }
+                break;
+            case KEY_CTRL_LEFT:
+                current_item = current_item_on_screen + current_scope;
+                switch (entries[current_item].type) {
+                    case TMC_SLIDER:
+                        {
+                        sliderProperties *prop = entries[current_item].item_based_properties;
+                        int val = entries[current_item].value;
+                        int max = prop->max;
+                        int min = prop->min;
+                        int step = prop->step;
+                        val -= step;
+                        if (val < min) val = min;
+                        if (val > max) val = max;
+                        entries[current_item].value = val;
+                        if (callback_memopt) {
+                            (*callback_memopt)(entries,current_item,entries[current_item].value);
+                        }
+                        }
+                        break;
                 }
                 break;
             case KEY_CTRL_EXIT:
                 LoadVRAM_1(); return -1;
+        }
         }
     }
 }
@@ -678,7 +852,7 @@ int info_error(char *infomsg, int height, int statusbarenabled)
     return key;
 }
 
-void register_menuitem_complex(complexMenuItem *i, char i1, int i2, int i3, char *i4, char i5) {
+void register_menuitem_complex(complexMenuItem *i, char i1, int i2, int i3, char *i4, int i5) {
     i->enabled = i1;
     i->type = i2;
     i->prop_index = i3;
