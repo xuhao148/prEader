@@ -52,16 +52,16 @@
 
 /*Configuration Menu Items*/
 #define N_M_CONF                 12
-#define M_CONF_LABEL_FONT_SIZE   0
-#define M_CONF_CHECK_FONT_LARGE  1
-#define M_CONF_CHECK_FONT_SMALL  2
-#define M_CONF_COLOR_SCHEME      3
-#define M_CONF_USE_STRICT_RNDR   4
-#define M_CONF_CHECK_BACKSLASH   5
-#define M_CONF_HIDE_HUD          6
-#define M_CONF_BGPICT_SETTINGS   7
-#define M_CONF_DRAW_PROGRESSBAR  8
-#define M_CONF_CLEAR_SESSION     9
+#define M_CONF_TAB_FONT_SIZE     0
+#define M_CONF_COLOR_SCHEME      1
+#define M_CONF_USE_STRICT_RNDR   2
+#define M_CONF_CHECK_BACKSLASH   3
+#define M_CONF_HIDE_HUD          4
+#define M_CONF_BGPICT_SETTINGS   5
+#define M_CONF_DRAW_PROGRESSBAR  6
+#define M_CONF_CLEAR_SESSION     7
+#define M_CONF_BACKUP_CONFIG     8
+#define M_CONF_RESTORE_CONFIG    9
 #define M_CONF_APPLY_RETURN      10
 #define M_CONF_DISMISS_RETURN    11
 
@@ -89,5 +89,8 @@
 #define TMC_TINYFONT            4
 #define TMC_SLIDER              5
 #define TMC_COLORVIEW           6
+#define TMC_TABITEM             7
+
+
 
 #endif

@@ -9,6 +9,7 @@
 #include <preader/i18n.h>
 #include <preader/reader.h>
 #include "prdefinitions.h"
+
 extern SessionConfig cfg;
 extern int modified_cfg;
 
@@ -132,6 +133,8 @@ while (!should_exit) {
                     memcpy(&cfg.book_records[optn_chosen+optn_slot_begin],&cfg.book_records[current_exchange],sizeof(BookRecord));
                     memcpy(&cfg.book_records[current_exchange],&br_temp,sizeof(BookRecord));
                     }
+                } else {
+                    optn_chosen = 0;
                 }
                 chosen = optn_chosen;
                 slot_begin = optn_slot_begin;

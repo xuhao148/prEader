@@ -1,4 +1,6 @@
-/* Some UI components (other than File Dialog) that are used multiple times. */
+/* Some UI components (other than File Dialog) that are used multiple times. 
+ You can use it in other programs, as long as you have the SessionConfig thing.
+*/
 #include <fxcg/display.h>
 #include <fxcg/keyboard.h>
 #include <stddef.h>
@@ -6,6 +8,7 @@
 #include <string.h>
 #include "prdefinitions.h"
 #include <preader/reader.h>
+#include <preader/common_definitions.h>
 
 #define AT(x,y) &vramaddr[(y)*384+(x)]
 
@@ -53,65 +56,13 @@ const char large_char_table[] = {
 #define SIZEOF_CHAR_TABLE 14
 #define SIZEOF_LARGE_CHAR_TABLE 10
 
+
 static short *vramaddr = NULL;
 int printMiniSingleLineInRestrictedLineWidth(int x, int y, char *str, int width, color_t fgcolor, color_t bgcolor, int transparentbg);
 int printCXYSingleLineInRestrictedLineWidth(int x, int y, char *str, int width, color_t fgcolor, color_t bgcolor, int transparentbg);
+void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, int highlighted, complexMenuItem tabitem);
 char *lineCopy(char *dest, const char *src, int maxn);
-/*
-    Dialogs
-     These functions helps to draw simple dialogs so that some controls (like MENU and LineGet copied from WikiPrizm)
-*/
-typedef struct _menuitem {
-    int enabled;
-    char *label;
-} MenuItem;
 
-typedef struct _menuitem_complex {
-    char enabled;
-    /* 
-        Specifies the type of the menu item.
-        0 - Standard menu item. When user chooses the item, its result will be {type:0,index:[prop_index],value:1}
-        1 - Checkbox menu item. Whether user changes the item or not, it will be included in the result array, with value
-            {type:1, index:[prop_index of the item], value:[1 if on / 0 if not on]}
-        2 - Radiobutton menu item. Whether user changes the item or not, it will be included in the result array, with value
-            {type:2, index:[prop_index of the item], value:[array subscription of the item]}
-        3 - Menu item with black triangle on the right. When user chooses the item, its result will be {type:0,value:[prop_index]}
-        4 - Standard menu item, but with forced small font whenever the original one is.]
-        5 - Slider. Extra properties is typed sliderProperties, see below.
-        6 - Color Viewer. prop_index is used as style settings:
-            0 - A label on the left and a color block on the right.
-            1 - A label with colored bg and white text (Black text when in white color).
-            2 - Text colored in the corresponding color.
-     */
-    int type;
-    /*
-        Define the index of the item.
-        Each item should be assigned an arbitary but unique prop_index, which will be returned in its complexMenuItemResult,
-        except for Radiobutton menu items -- those in the same group should be assigned the same prop_index.
-    */
-    int prop_index;
-    /* Note that the label will be cut off if when is too long. */
-    char *label;
-    /* Checkbox items and radiobutton items use it; 0 for off and 1 for on */
-    int value;
-    /* A pointer to a data structure determined by its type. */
-    void *item_based_properties;
-} complexMenuItem;
-
-typedef struct _callback_data {
-    int current_scope;
-    int current_item_on_screen;
-} callbackData;
-
-typedef struct _slider_properties {
-    int min;
-    int max;
-    int step;
-    int label_width;
-    int value_width;
-    char show_label;
-    char show_value;
-} sliderProperties;
 
 /* Draws a simple dialog with gray shadow under it. */
 void drawDialog(int x1, int y1, int x2, int y2) {
@@ -462,6 +413,10 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                             }
                                 break;
                         }
+                        break;
+                    case TMC_TABITEM:
+                        __uicomp_draw_tabitem(left,top+i*itemheight_with_linespace,itemwidth,fontsize,i==current_item_on_screen,entries[current_scope+i]);
+                        break;
                 }
 
             }
@@ -558,7 +513,7 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                         }
                     }
                     break;
-                    case 5:
+                    case 5: case TMC_TABITEM:
                     break;
                     default: LoadVRAM_1(); return -1;
                 }
@@ -584,6 +539,19 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                         }
                         }
                         break;
+                    case TMC_TABITEM:
+                        {
+                            tabularProperties *tabprop = entries[current_item].item_based_properties;
+                            int n_items = tabprop->n_items;
+                            entries[current_item].value++;
+                            if (entries[current_item].value >= n_items) {
+                                entries[current_item].value = 0;
+                            }
+                            if (callback_memopt) {
+                                (*callback_memopt)(entries,current_item,entries[current_item].value);
+                            }
+                        }
+                        break;
                 }
                 break;
             case KEY_CTRL_LEFT:
@@ -605,6 +573,19 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                         }
                         }
                         break;
+                    case TMC_TABITEM:
+                    {
+                        tabularProperties *tabprop = entries[current_item].item_based_properties;
+                        int n_items = tabprop->n_items;
+                        entries[current_item].value--;
+                        if (entries[current_item].value < 0) {
+                            entries[current_item].value = n_items - 1;
+                        }
+                        if (callback_memopt) {
+                            (*callback_memopt)(entries,current_item,entries[current_item].value);
+                        }
+                    }
+                    break;
                 }
                 break;
             case KEY_CTRL_EXIT:
@@ -910,5 +891,146 @@ void draw_custom_font_16x32(int x, int y, char *str, color_t color) {
         }
         flg++;
         x += 16;
+    }
+}
+
+int __uicomp_isum(int arr[], int n) {
+    int sum = 0;
+    for (int i=0; i<n; i++) {
+        sum += arr[i];
+    }
+    return sum;
+}
+
+void __uicomp_rect_s(int x1, int y1, int x2, int y2, color_t col) {
+    rect(x1,y1+24,x2,y2+24,col);
+}
+
+int __uicomp_getwidth_mini(char *str) {
+    ProcessPrintChars(936);
+    int x=0, y=0;
+    PrintMini(&x,&y,str,0,-1,0,0,COLOR_BLACK,COLOR_WHITE,0,0);
+    ProcessPrintChars(0);
+    return x;
+}
+
+void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, int highlighted, complexMenuItem tabitem) {
+    tabularProperties *props = tabitem.item_based_properties;
+    char *main_label = tabitem.label;
+    int main_label_width = props->width_main_label;
+    int n_items = props->n_items;
+    char use_main_label = props->show_main_label;
+    int width_available_for_ui = max_width - (use_main_label?main_label_width:0) - 4 - 4 - (n_items - 1);
+    if (width_available_for_ui <= 8) return;
+    int ui_left = left + (use_main_label?main_label_width:0) + 2;
+    int ui_right = left + max_width - 1 - 2;
+    if (ui_left >= ui_right) return;
+    int real_item_width[n_items];
+    for (int i=0; i<n_items; i++) {
+        real_item_width[i] = props->items[i].desired_width;
+        if (real_item_width[i] == -1) {
+            real_item_width[i] = __uicomp_getwidth_mini(props->items[i].label)+2;
+        }
+    }
+    while (__uicomp_isum(real_item_width,n_items) > width_available_for_ui) {
+        for (int i=0; i<n_items; i++) {
+            real_item_width[i]--;
+            if (real_item_width[i] < 0) real_item_width[i] = 0;
+        }
+    }
+    int real_item_width_sum = __uicomp_isum(real_item_width,n_items);
+    int ui_mid = (ui_left + ui_right) / 2;
+    int ui_cursor = ui_mid - (real_item_width_sum) / 2 - (n_items / 2 - 1) - 2;
+    int chosen = tabitem.value;
+    
+    color_t bg;
+    color_t txt_on, txt_off;
+    color_t trans;
+    if (highlighted) {
+        bg = cfg.color_scheme[CI_MENU_FG_CHOSEN];
+        txt_on = cfg.color_scheme[CI_MENU_BG_CHOSEN];
+        txt_off = cfg.color_scheme[CI_MENU_FG_CHOSEN];
+        trans = cfg.color_scheme[CI_MENU_BG_CHOSEN];
+    } else {
+        bg = cfg.color_scheme[CI_MENU_BG_CHOSEN];
+        txt_on = cfg.color_scheme[CI_MENU_FG_CHOSEN];
+        txt_off = cfg.color_scheme[CI_MENU_BG_CHOSEN];
+        trans = cfg.color_scheme[CI_MENU_BG];
+    }
+    /* Start drawing... */
+    if (use_smallfont) {
+        if (props->show_main_label) {
+            printMiniSingleLineInRestrictedLineWidth(left,top,tabitem.label,props->width_main_label,highlighted?cfg.color_scheme[CI_MENU_FG_CHOSEN]:cfg.color_scheme[CI_MENU_FG],COLOR_WHITE,1);
+        }
+            /* Left border */
+    __uicomp_rect_s(ui_cursor,top+1,ui_cursor,top+16,bg);
+    __uicomp_rect_s(ui_cursor+1,top,ui_cursor+1,top+17,bg);
+    if (chosen != 0) {
+        __uicomp_rect_s(ui_cursor+1,top+1,ui_cursor+1,top+16,trans);
+    }
+    ui_cursor += 2;
+    /* Items */
+    for (int i=0; i<n_items; i++) {
+        __uicomp_rect_s(ui_cursor,top,ui_cursor+real_item_width[i]-1,top+17,bg);
+        if (chosen != i) {
+            __uicomp_rect_s(ui_cursor,top+1,ui_cursor+real_item_width[i]-1,top+16,trans);
+        }
+        int txt_width = __uicomp_getwidth_mini(props->items[i].label);
+        if (txt_width > real_item_width[i]) txt_width = real_item_width[i];
+        int txt_start = (ui_cursor+ui_cursor+real_item_width[i]-1)/2-(txt_width/2);
+        if (chosen == i) {
+            printMiniSingleLineInRestrictedLineWidth(txt_start,top,props->items[i].label,real_item_width[i],txt_on,COLOR_WHITE,1);
+        } else {
+            printMiniSingleLineInRestrictedLineWidth(txt_start,top,props->items[i].label,real_item_width[i],txt_off,COLOR_WHITE,1);
+        }
+        ui_cursor += real_item_width[i];
+        if (i < n_items-1) {
+            __uicomp_rect_s(ui_cursor,top,ui_cursor,top+17,bg);
+            ui_cursor++;
+        }
+    }
+    /* Right border */
+    __uicomp_rect_s(ui_cursor,top,ui_cursor,top+17,bg);
+    __uicomp_rect_s(ui_cursor+1,top+1,ui_cursor+1,top+16,bg);
+    if (chosen != n_items - 1) {
+        __uicomp_rect_s(ui_cursor,top+1,ui_cursor,top+16,trans);
+    }
+    } else {
+        if (props->show_main_label) {
+            printCXYSingleLineInRestrictedLineWidth(left,top,tabitem.label,props->width_main_label,highlighted?cfg.color_scheme[CI_MENU_FG_CHOSEN]:cfg.color_scheme[CI_MENU_FG],COLOR_WHITE,1);
+        }
+    /* Left border */
+    __uicomp_rect_s(ui_cursor,top+2,ui_cursor,top+21,bg);
+    __uicomp_rect_s(ui_cursor+1,top+1,ui_cursor+1,top+22,bg);
+    if (chosen != 0) {
+        __uicomp_rect_s(ui_cursor+1,top+2,ui_cursor+1,top+21,trans);
+    }
+    ui_cursor += 2;
+    /* Items */
+    for (int i=0; i<n_items; i++) {
+        __uicomp_rect_s(ui_cursor,top,ui_cursor+real_item_width[i]-1,top+23,bg);
+        if (chosen != i) {
+            __uicomp_rect_s(ui_cursor,top+1,ui_cursor+real_item_width[i]-1,top+22,trans);
+        }
+        int txt_width = __uicomp_getwidth_mini(props->items[i].label);
+        if (txt_width > real_item_width[i]) txt_width = real_item_width[i];
+        int txt_start = (ui_cursor+ui_cursor+real_item_width[i]-1)/2-(txt_width/2);
+        if (chosen == i) {
+            printMiniSingleLineInRestrictedLineWidth(txt_start,top+3,props->items[i].label,real_item_width[i],txt_on,COLOR_WHITE,1);
+        } else {
+            printMiniSingleLineInRestrictedLineWidth(txt_start,top+3,props->items[i].label,real_item_width[i],txt_off,COLOR_WHITE,1);
+        }
+        ui_cursor += real_item_width[i];
+        if (i < n_items-1) {
+            __uicomp_rect_s(ui_cursor,top,ui_cursor,top+23,bg);
+            ui_cursor++;
+        }
+    }
+    /* Right border */
+    __uicomp_rect_s(ui_cursor,top+1,ui_cursor,top+22,bg);
+    __uicomp_rect_s(ui_cursor+1,top+2,ui_cursor+1,top+21,bg);
+    if (chosen != n_items - 1) {
+        __uicomp_rect_s(ui_cursor,top+2,ui_cursor,top+21,trans);
+    }
     }
 }

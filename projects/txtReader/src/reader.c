@@ -15,67 +15,6 @@
 
 static color_t fgcolor,bgcolor;
 
-typedef struct _shiori {
-    long byte_location;
-    long page_location;
-    char preview[16];
-} Shiori;
-typedef struct _book_record {
-    char book_path[32];
-    long last_location; // Unit: byte
-    long last_byte_location;
-    int bookmark_version; // 0 : Large font; 1 : Small font
-    Shiori bookmarks[8];
-} BookRecord;
-typedef struct _session_config {
-    char magic[8];
-    char has_last_book; // 0: No last book 1: Has last book
-    int  font_size; // 0:Standard 1:Mini Other values will be treated as 0
-    int  n_book_records;
-    int  process_backslashes; // 0: Do not process backslashes (It will be treated as escape sequences)  1: process backslashes (\ -> \\)
-    int  use_bgpict;
-    int  hide_ui;
-    unsigned int  extra_settings;
-    int  draw_progressbar; //0: Do not draw it  1: draw it
-    char bgpict_path[32];
-    BookRecord book_records[32];
-    BookRecord *last_book;
-    color_t color_scheme[N_COLORS];
-} SessionConfig;
-
-
-typedef struct _paging_data_header {
-    char magic[6];
-    int version; /* 0 : <= 16 pages; 1 : <= 64 pages; 2 : <= 256 pages; 3 : <= 1024 pages; 4 : <= 8192 pages */
-    int n_pages_avail;
-    int font; /* 0 : large; 1 : small */
-} PagingDataHeader;
-
-typedef struct _paging_data_ver0 {
-    PagingDataHeader hdr;
-    int pages[16];
-} PD0;
-
-typedef struct _paging_data_ver1 {
-    PagingDataHeader hdr;
-    int pages[64];
-} PD1;
-
-typedef struct _paging_data_ver2 {
-    PagingDataHeader hdr;
-    int pages[256];
-} PD2;
-
-typedef struct _paging_data_ver3 {
-    PagingDataHeader hdr;
-    int pages[1024];
-} PD3;
-
-typedef struct _paging_data_ver4 {
-    PagingDataHeader hdr;
-    int pages[8192];
-} PD4;
-
 const static color_t progressbar_texture_blue[] = {
 48991,48991,24191,48991,17983,24191,7647,17983,7647,
 48991,48991,48991,24191,24191,17983,17983,7647,7647,
@@ -313,7 +252,7 @@ int read_book(char *fpath) {
 
     bgcolor = cfg.color_scheme[CI_READER_BG];
     fgcolor = cfg.color_scheme[CI_READER_FG];
-
+    DrawFrame(bgcolor);
     while (in_reading) {
         Bdisp_AllClr_VRAM();
         rect(0,0,383,215,bgcolor);
@@ -393,9 +332,9 @@ int read_book(char *fpath) {
             else
                 strcpy(sbuf,"EOF");
             if (percentage >= 10)
-                draw_custom_font_8x16(359,198,sbuf,COLOR_BLACK);
+                draw_custom_font_8x16(359,197,sbuf,cfg.color_scheme[CI_READER_FG]);
             else
-                draw_custom_font_8x16(359+8,198,sbuf,COLOR_BLACK);
+                draw_custom_font_8x16(359+8,197,sbuf,cfg.color_scheme[CI_READER_FG]);
         }
         GetKey(&key);
         MenuItem menu_f1[] = {1,"显示文件信息",1,"立即重建分页文件",1,"清除此书所有书签",1,"返回主菜单",1,"退出程序"};

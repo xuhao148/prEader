@@ -7,30 +7,8 @@
 #include <preader/ui.h>
 #include "prdefinitions.h"
 
-typedef struct
-{
-  unsigned short id, type;
-  unsigned long fsize, dsize;
-  unsigned int property;
-  unsigned long address;
-} file_type_t;
 
-typedef struct{
-  unsigned int i1; // unknown, set to zero
-  unsigned int indicatormaximum; // maximum logical indicator range
-  unsigned int indicatorheight; // height of the indicator in units of indicatormaximum
-  unsigned int indicatorpos; // indicator position in units of indicatormaxiumum
-  unsigned int i5; // unknown, set to zero
-  unsigned short barleft; // left position of the bar in pixels
-  unsigned short bartop; // top position of the bar in pixels
-  unsigned short barheight; // height of the bar in pixels
-  unsigned short barwidth; // width of the bar in pixels
-} TScrollbar;
 typedef unsigned short TStandardScrollbar[0x12];
-typedef struct {
-    file_type_t fProperties;
-    char pathname[64];
-} file_info_t;
 int fileMenuSelect(file_info_t files[], int max_n, char *pathname, char *filter) {
     static int langid = -1;
     int key,menuindex = 0,listindex=0, drawableitems;

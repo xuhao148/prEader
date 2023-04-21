@@ -31,6 +31,7 @@ void main(void) {
     cfg.color_scheme[CI_READER_FG] = COLOR_READER_FG;
     int key;
     const char *szDataFileFolderPath = "\\\\fls0\\@PRDR";
+    const char *szMCSConfigFolderPath = "@PREADER";
     {
     short wszDataFileFolderPath[64];
     Bfile_StrToName_ncpy(wszDataFileFolderPath,szDataFileFolderPath,64);
@@ -51,20 +52,19 @@ void main(void) {
         fatal_error("系统中存在“@PRDR”文件。\n请删除此文件，然后再试一次。",60,1);
     }
     }
+    MCS_CreateDirectory(szMCSConfigFolderPath);
     /* Config reading & processing*/
-    const char *szConfigfilePath = "\\\\fls0\\@PRDR\\prconf.cfg";
-    short wszConfigfilePath[64] = {0};
-    Bfile_StrToName_ncpy(wszConfigfilePath,szConfigfilePath,32);
-    int fhConfigHandle = Bfile_OpenFile_OS(wszConfigfilePath,READ,0);
-    if (fhConfigHandle < 0) {
+    //const char *szConfigfilePath = "\\\\fls0\\@PRDR\\prconf.cfg";
+    const char *szConfigItemName = "Session";
+    int item_len;
+    int mcsret = MCSGetDlen2(szMCSConfigFolderPath,szConfigItemName,&item_len);
+    if (mcsret != 0) {
+      /* File Not Exist */
         int scsize = sizeof(SessionConfig);
-        int cfret = Bfile_CreateEntry_OS(wszConfigfilePath,CREATEMODE_FILE,&scsize);
-        if (cfret < 0) {
-            fatal_error("无法读取或创建配置文件prconf.cfg。\n请检查你的文件系统，并重启Add-in。",90,1);
-        }
-        fhConfigHandle = Bfile_OpenFile_OS(wszConfigfilePath,WRITE,0);
-        if (fhConfigHandle < 0) {
-            fatal_error("尽管创建了prconf.cfg，但在创建后无法打开并写入。\n请检查你的文件系统，并重启Add-in。",72,1);
+        int mcs_capacity, mcs_bottom;
+        mcs_capacity = MCS_GetCapa(&mcs_bottom);
+        if (mcs_capacity < scsize+1024) {
+          fatal_error("主内存空间太小，无法创建配置文件。\n请清理主内存空间，并重启Add-in。",90,1);
         }
         cfg.magic[0] = 'P';
         cfg.magic[1] = 'R';
@@ -74,25 +74,30 @@ void main(void) {
         cfg.magic[5] = 'E';
         cfg.magic[6] = 'R';
         cfg.magic[7] = '0';
-        Bfile_WriteFile_OS(fhConfigHandle,&cfg,sizeof(cfg));
-        Bfile_CloseFile_OS(fhConfigHandle);
-        infobox("已创建prconfig.cfg。\n[EXE] 继续",60,1);
+        int ciret = MCS_WriteItem(szMCSConfigFolderPath,szConfigItemName,0,sizeof(SessionConfig),&cfg);
+        if (ciret != 0) {
+            char errbuf[64];
+            sprintf(errbuf,"未能创建配置项（errno=%d）。\n请检查主内存空间，并再试一次。",ciret);
+            fatal_error(errbuf,90,1);
+        }
+        infobox("已创建配置项。\n[EXE] 继续",60,1);
     } else {
-        int filesize = Bfile_GetFileSize_OS(fhConfigHandle);
-        if (filesize != sizeof(SessionConfig)) {
-            Bfile_CloseFile_OS(fhConfigHandle);
-            fatal_error("prconf.cfg大小不正确。\n请删除当前的prconf.cfg，并再次运行此Add-in来重建配置文件。",72,1);
+        if (item_len != sizeof(SessionConfig)) {
+            fatal_error("配置项大小错误。\n请删除@PREADER文件夹中的“Session”项并重建配置项。",72,1);
         } else {
-            Bfile_ReadFile_OS(fhConfigHandle,&cfg,sizeof(cfg),0);
-            Bfile_CloseFile_OS(fhConfigHandle);
+            int gdret = MCSGetData1(0,sizeof(SessionConfig),&cfg);
+            if (gdret != 0) {
+              fatal_error("读取配置项失败。\n请检查主内存空间，并再试一次。",72,1);
+            }
             if (!detect_magic(cfg.magic)) {
-                fatal_error("prconf.cfg格式错误。\n请删除当前的prconf.cfg，并再次运行此Add-in来重建配置文件。",72,1);
+                fatal_error("配置项格式错误。\n请删除@PREADER文件夹中的“Session”项并重建配置项。",72,1);
             }
         }
     }
 
     /* Draws the main menu. */
     DefineStatusAreaFlags(1,0,0,0);
+    DrawFrame(COLOR_WHITE);
     while (1) {
     Bdisp_AllClr_VRAM();
     DefineStatusMessage("Preader v0.1.3 Alpha",1,TEXT_COLOR_BLACK,0);
@@ -128,9 +133,6 @@ void main(void) {
         case M_MAIN_SETTINGS:
        {
         complexMenuItem settingsItems[N_M_CONF];
-        register_menuitem_complex(&settingsItems[M_CONF_LABEL_FONT_SIZE],0,0,0,"字体大小",0);
-        register_menuitem_complex(&settingsItems[M_CONF_CHECK_FONT_LARGE],1,2,0,"- 大字体",0);
-        register_menuitem_complex(&settingsItems[M_CONF_CHECK_FONT_SMALL],1,2,0,"- 小字体",0);
         register_menuitem_complex(&settingsItems[M_CONF_CHECK_BACKSLASH],1,1,0,"反斜线按原字符输出",0);
         register_menuitem_complex(&settingsItems[M_CONF_CLEAR_SESSION],1,0,0,"清除所有记录",0);
         register_menuitem_complex(&settingsItems[M_CONF_APPLY_RETURN],1,0,0,"应用并返回主菜单",0);
@@ -140,8 +142,13 @@ void main(void) {
         register_menuitem_complex(&settingsItems[M_CONF_DRAW_PROGRESSBAR],1,1,0,"在底部绘制进度条",0);
         register_menuitem_complex(&settingsItems[M_CONF_USE_STRICT_RNDR],1,1,0,"使用严格的渲染机制",0);
         register_menuitem_complex(&settingsItems[M_CONF_COLOR_SCHEME],1,3,0,"配色方案设置",0);
-        settingsItems[M_CONF_CHECK_FONT_LARGE].value = !cfg.font_size;
-        settingsItems[M_CONF_CHECK_FONT_SMALL].value = cfg.font_size;
+        register_menuitem_complex(&settingsItems[M_CONF_TAB_FONT_SIZE],1,TMC_TABITEM,0,"字体大小",0);
+        register_menuitem_complex(&settingsItems[M_CONF_BACKUP_CONFIG],1,0,0,"备份配置文件",0);
+        register_menuitem_complex(&settingsItems[M_CONF_RESTORE_CONFIG],1,0,0,"恢复配置文件",0);
+        tabularItems fontsize_items[] = {70,"大字体",70,"小字体"};
+        tabularProperties fontsize_props = {2,&fontsize_items,96,1};
+        settingsItems[M_CONF_TAB_FONT_SIZE].item_based_properties = &fontsize_props;
+        settingsItems[M_CONF_TAB_FONT_SIZE].value = cfg.font_size;
         settingsItems[M_CONF_CHECK_BACKSLASH].value = cfg.process_backslashes;
         settingsItems[M_CONF_HIDE_HUD].value = cfg.hide_ui;
         settingsItems[M_CONF_DRAW_PROGRESSBAR].value = cfg.draw_progressbar;
@@ -160,7 +167,7 @@ void main(void) {
         DisplayStatusArea();
         drawDialog(5,29,376,193);
         rect(5,29,376,193,cfg.color_scheme[CI_MENU_BG]);
-        choice = flexibleMenu_complex(5,29-24,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,376-5+1-6,2,N_M_CONF,settingsItems,6,1,1,1,NULL,NULL);
+        choice = flexibleMenu_complex(5,29-24,cfg.color_scheme[CI_MENU_BG],1,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,376-5+1-6,2,N_M_CONF,settingsItems,8,0,1,1,NULL,NULL);
         if (choice == M_CONF_CLEAR_SESSION) {
           int chs = msgbox("所有阅读记录将永久清除、无法恢复！\n确定？\n[EXE] 确定  [EXIT] 取消","警告",100,1,COLOR_RED);
           if (chs == KEY_CTRL_EXE) {
@@ -197,7 +204,7 @@ void main(void) {
                         break;
         } else if (choice == M_CONF_APPLY_RETURN) {
           modified_cfg = 1;
-          cfg.font_size = settingsItems[M_CONF_CHECK_FONT_SMALL].value;
+          cfg.font_size = settingsItems[M_CONF_TAB_FONT_SIZE].value;
           cfg.process_backslashes = settingsItems[M_CONF_CHECK_BACKSLASH].value;
           cfg.hide_ui = settingsItems[M_CONF_HIDE_HUD].value;
           cfg.draw_progressbar = settingsItems[M_CONF_DRAW_PROGRESSBAR].value;
@@ -329,6 +336,80 @@ void main(void) {
             break;
           }
           } 
+        } else if (choice == M_CONF_BACKUP_CONFIG) {
+          /* User chose to backup config from memory to flash */
+          char *szBackupFilePath = "\\\\fls0\\@PRDR\\config.g3m";
+          unsigned short wszBackupFilePath[65];
+          int ready_to_create = 0, ready_to_write = 0;
+          Bfile_StrToName_ncpy(wszBackupFilePath,szBackupFilePath,64);
+          int fhBackupFileHandle = Bfile_OpenFile_OS(wszBackupFilePath,READ,0);
+          if (fhBackupFileHandle < 0) {
+              ready_to_create = 1;
+          } else {
+            Bfile_CloseFile_OS(fhBackupFileHandle);
+            int ret = infobox("这将删除之前的备份文件。继续？\n[EXE]继续 [EXIT]取消",72,1);
+            if (ret == KEY_CTRL_EXE) {
+              int deret = Bfile_DeleteEntry(wszBackupFilePath);
+              if (deret != 0) {
+                info_error("无法删除之前的备份文件。",30,1);
+              } else {
+                ready_to_create = 1;
+              }
+            }
+          }
+          if (ready_to_create) {
+                int fsize = sizeof(SessionConfig);
+                int cfret = Bfile_CreateEntry_OS(wszBackupFilePath,CREATEMODE_FILE,&fsize);
+                if (cfret != 0) {
+                  info_error("无法创建备份文件。",30,1);
+                } else {
+                  ready_to_write = 1;
+                }
+          }
+          if (ready_to_write) {
+            fhBackupFileHandle = Bfile_OpenFile_OS(wszBackupFilePath,WRITE,0);
+            if (fhBackupFileHandle < 0) {
+              info_error("无法写入备份文件。",30,1);
+            } else {
+              Bfile_SeekFile_OS(fhBackupFileHandle,0);
+              Bfile_WriteFile_OS(fhBackupFileHandle,&cfg,sizeof(SessionConfig));
+              Bfile_CloseFile_OS(fhBackupFileHandle);
+              infobox("已备份到\\\\fls0\\\\@PRDR\\\\config.g3m。",60,1);
+            }
+          }
+        } else if (choice == M_CONF_RESTORE_CONFIG) {
+          char *szBackupFilePath = "\\\\fls0\\@PRDR\\config.g3m";
+          unsigned short wszBackupFilePath[65];
+          Bfile_StrToName_ncpy(wszBackupFilePath,szBackupFilePath,64);
+          int fhBackupFileHandle = Bfile_OpenFile_OS(wszBackupFilePath,READ,0);
+          if (fhBackupFileHandle < 0) {
+            info_error("备份文件不存在！",40,1);
+          } else {
+            int filesize = Bfile_GetFileSize_OS(fhBackupFileHandle);
+            if (filesize != sizeof(SessionConfig)) {
+              info_error("备份文件大小错误！",40,1);
+            } else {
+              SessionConfig new_cfg;
+              int rfret = Bfile_ReadFile_OS(fhBackupFileHandle,&new_cfg,sizeof(SessionConfig),0);
+              if (rfret < 0) {
+                Bfile_CloseFile_OS(fhBackupFileHandle);
+                info_error("读取备份文件时失败。",40,1);
+              } else {
+                Bfile_CloseFile_OS(fhBackupFileHandle);
+                if (detect_magic(new_cfg.magic)) {
+                  int choice = msgbox("确定要恢复备份吗？\n该操作不可逆！","警告",80,1,COLOR_GOLD);
+                  if (choice == KEY_CTRL_EXE) {
+                      modified_cfg = 1;
+                      memcpy(&cfg,&new_cfg,sizeof(SessionConfig));
+                      infobox("配置已恢复。",37,1);
+                      break;
+                  }
+                } else {
+                  info_error("备份文件MAGIC错误！",40,1);
+                }
+              }
+            }
+          }
         }
         } while (choice != MENU_DISCARDED && choice != M_CONF_APPLY_RETURN && choice != M_CONF_DISMISS_RETURN);
        }
@@ -343,16 +424,14 @@ void main(void) {
             SaveAndOpenMainMenu();
             break;
     }
+    DrawFrame(COLOR_WHITE);
     if (modified_cfg) {
-    fhConfigHandle = Bfile_OpenFile_OS(wszConfigfilePath,WRITE,0);
-    if (fhConfigHandle < 0) {
-        fatal_error("无法写入配置文件prconf.cfg。\n请检查文件系统，并再试一次。",72,1);
-    } else {
-        Bfile_SeekFile_OS(fhConfigHandle,0);
-        Bfile_WriteFile_OS(fhConfigHandle,&cfg,sizeof(cfg));
-        Bfile_CloseFile_OS(fhConfigHandle);
+    int wfret = MCS_WriteItem(szMCSConfigFolderPath,szConfigItemName,0,sizeof(SessionConfig),&cfg);
+    if (wfret != 0) {
+        char errbuf[64];
+        sprintf(errbuf,"无法写入配置项(errno=%d)。\n请检查文件系统，并再试一次。",wfret);
+        fatal_error(errbuf,72,1);
     }
-    
     }
     if (reader_ret == R_READER_STRAIGHT_EXIT) {
         SaveAndOpenMainMenu();

@@ -13,18 +13,7 @@ void callback_setpreview(complexMenuItem *menu, int idx, int val);
 color_t rgb565_to_colort(int r, int g, int b);
 color_t preset_color_chooser(color_t current_color);
 
-typedef struct _preset_color {
-    int id;
-    char *name;
-    color_t color;
-} presetColor;
 
-typedef struct _preset_palette {
-    int id;
-    char *name;
-    int n_colors;
-    color_t *colors;
-} presetPalette;
 
 color_t pp_color_reader_01[] = {COLOR_WHITE,COLOR_BLACK};
 color_t pp_color_reader_02[] = {COLOR_BLACK,COLOR_WHITE};
@@ -83,7 +72,7 @@ color_t pick_a_color(color_t current_color) {
     register_menuitem_complex(&colorChooser[6],1,0,0,"È¡Ïû",0);
     while (1) {
     drawDialog(30,5+24,30+300-1,5+24+6*26);
-    int ret = flexibleMenu_complex(30,5,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,300,2,6,colorChooser,6,4,1,0,NULL,callback_setpreview);
+    int ret = flexibleMenu_complex(30,5,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,300,2,7,colorChooser,6,4,1,1,NULL,callback_setpreview);
     if (ret == 5) return colorChooser[3].value;
     else if (ret == 4) {
         color_t the_color = preset_color_chooser(colorChooser[3].value);
