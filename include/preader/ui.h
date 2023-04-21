@@ -1,59 +1,10 @@
 #include <fxcg/display.h>
+#include <preader/common_definitions.h>
+
 #ifndef _PRDR_UI_H
 #define _PRDR_UI_H
 
 #define AT(x,y) &vramaddr[(y)*384+(x)]
-
-typedef struct _menuitem {
-    int enabled;
-    char *label;
-} MenuItem;
-
-typedef struct _menuitem_complex {
-    char enabled;
-    /* 
-        Specifies the type of the menu item.
-        0 - Standard menu item. When user chooses the item, its result will be {type:0,index:[prop_index],value:1}
-        1 - Checkbox menu item. Whether user changes the item or not, it will be included in the result array, with value
-            {type:1, index:[prop_index of the item], value:[1 if on / 0 if not on]}
-        2 - Radiobutton menu item. Whether user changes the item or not, it will be included in the result array, with value
-            {type:2, index:[prop_index of the item], value:[array subscription of the item]}
-        3 - Menu item with black triangle on the right. When user chooses the item, its result will be {type:0,value:[prop_index]}
-        4 - Standard menu item, but with forced small font whenever the original one is.]
-        5 - Slider. Extra properties is typed sliderProperties, see below.
-        6 - Color Viewer. prop_index is used as style settings:
-            0 - A label on the left and a color block on the right.
-            1 - A label with colored bg and white text (Black text when in white color).
-            2 - Text colored in the corresponding color with current bg.     */
-    int type;
-    /*
-        Define the index of the item.
-        Most of the time it can be arbitary,
-        except for Radiobutton menu items -- those in the same group should be assigned the same prop_index.
-    */
-    int prop_index;
-    /* Note that the label will be cut off if when is too long. */
-    char *label;
-    /* Checkbox items and radiobutton items use it; 0 for off and 1 for on */
-    int value;
-    /* A pointer to a data structure determined by its type. */
-    void *item_based_properties;
-} complexMenuItem;
-
-typedef struct _callback_data {
-    int current_scope;
-    int current_item_on_screen;
-} callbackData;
-
-typedef struct _slider_properties {
-    int min;
-    int max;
-    int step;
-    int label_width;
-    int value_width;
-    char show_label;
-    char show_value;
-} sliderProperties;
 
 extern void rect(int x1, int y1, int x2, int y2, short color);
 extern void drawDialog(int x1, int y1, int x2, int y2);
