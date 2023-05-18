@@ -119,38 +119,24 @@ typedef struct _session_config {
     BookRecord book_records[32];
     BookRecord *last_book;
     color_t color_scheme[10];
+    unsigned int bytes_read;
+    unsigned int bytes_written;
+    unsigned int pages_read;
+    unsigned int books_added;
+    unsigned int pagination_files_created;
+    unsigned int settings_modified;
 } SessionConfig;
 typedef struct _paging_data_header {
     char magic[6];
-    int version; /* 0 : <= 16 pages; 1 : <= 64 pages; 2 : <= 256 pages; 3 : <= 1024 pages; 4 : <= 8192 pages */
+    //int version; /* (abandoned) 0 : <= 16 pages; 1 : <= 64 pages; 2 : <= 256 pages; 3 : <= 1024 pages; 4 : <= 8192 pages */
     int n_pages_avail;
     int font; /* 0 : large; 1 : small */
 } PagingDataHeader;
 
-typedef struct _paging_data_ver0 {
-    PagingDataHeader hdr;
-    int pages[16];
-} PD0;
-
-typedef struct _paging_data_ver1 {
-    PagingDataHeader hdr;
-    int pages[64];
-} PD1;
-
-typedef struct _paging_data_ver2 {
-    PagingDataHeader hdr;
-    int pages[256];
-} PD2;
-
-typedef struct _paging_data_ver3 {
-    PagingDataHeader hdr;
-    int pages[1024];
-} PD3;
-
-typedef struct _paging_data_ver4 {
+typedef struct _paging_data_ver6 {
     PagingDataHeader hdr;
     int pages[8192];
-} PD4;
+} PDCache; 
 
 typedef struct{
   unsigned int i1; // unknown, set to zero

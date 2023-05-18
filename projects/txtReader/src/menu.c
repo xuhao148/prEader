@@ -9,7 +9,7 @@
 #include <preader/reader.h>
 #include "prdefinitions.h"
 #include "colordialog.h"
-
+#include "statman.h"
 
 SessionConfig cfg = {0};
 int modified_cfg = 0;
@@ -113,13 +113,17 @@ void main(void) {
     register_menuitem_normal(&mainmenu[M_MAIN_SETTINGS],1,"设置");
     register_menuitem_normal(&mainmenu[M_MAIN_ABOUT],1,"关于此程序");
     register_menuitem_normal(&mainmenu[M_MAIN_MANAGE_SLOTS],1,"管理存储槽位");
+    register_menuitem_normal(&mainmenu[M_MAIN_STATS],1,"显示统计信息");
     mainmenu[M_MAIN_OPEN_RECENT].enabled = cfg.has_last_book;
-    drawDialog(45,47,325,184);
-    rect(45,47,325,184,cfg.color_scheme[CI_MENU_BG]);
-    int option = flexibleMenu(45,47-24,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,325-45,2,5,mainmenu,5,0,1,0);
+    drawDialog(45,47-12,325,184+12-1);
+    rect(45,47-12,325,184+12-1,cfg.color_scheme[CI_MENU_BG]);
+    int option = flexibleMenu(45,47-24-12,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,325-45,2,6,mainmenu,6,0,1,0);
     char *filepath[64];
     int reader_ret = 0;
     switch (option) {
+        case M_MAIN_STATS:
+          show_stat();
+          break;
         case M_MAIN_BROWSE:
             {
             int ft_ret = browseAndOpenFileI("\\\\fls0\\","*.*",filepath);
@@ -169,7 +173,7 @@ void main(void) {
         rect(5,29,376,193,cfg.color_scheme[CI_MENU_BG]);
         choice = flexibleMenu_complex(5,29-24,cfg.color_scheme[CI_MENU_BG],1,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,376-5+1-6,2,N_M_CONF,settingsItems,8,0,1,1,NULL,NULL);
         if (choice == M_CONF_CLEAR_SESSION) {
-          int chs = msgbox("所有阅读记录将永久清除、无法恢复！\n确定？\n[EXE] 确定  [EXIT] 取消","警告",100,1,COLOR_RED);
+          int chs = msgbox("所有阅读记录将永久清除、无法恢复！（计数器不会清除）\n确定？\n[EXE] 确定  [EXIT] 取消","警告",100,1,COLOR_RED);
           if (chs == KEY_CTRL_EXE) {
                             modified_cfg = 1;
                             cfg.font_size = 0;
@@ -179,7 +183,7 @@ void main(void) {
                             cfg.hide_ui = 0;
                             cfg.draw_progressbar = 0;
                             cfg.extra_settings = 0;
-                            memset(&cfg.last_book,0,sizeof(BookRecord));
+                            memset(&cfg.last_book,0,sizeof(void *));
                             for (int i=0; i<32; i++) {
                                 cfg.book_records[i].book_path[0] = 0;
                                 for (int j=0; j<8; j++)
@@ -224,6 +228,7 @@ void main(void) {
           strcpy(cfg.bgpict_path,tmp_pictpath);
           cfg.use_bgpict = tmp_set_pictpath;
           }
+          stat_set();
         } else if (choice == M_CONF_BGPICT_SETTINGS) {
           complexMenuItem bgSettingsItems[N_M_BG];
           register_menuitem_complex(&bgSettingsItems[M_BG_CHECK_ENABLED],1,1,0,"启用",0);
@@ -373,6 +378,7 @@ void main(void) {
             } else {
               Bfile_SeekFile_OS(fhBackupFileHandle,0);
               Bfile_WriteFile_OS(fhBackupFileHandle,&cfg,sizeof(SessionConfig));
+              stat_write(sizeof(SessionConfig));
               Bfile_CloseFile_OS(fhBackupFileHandle);
               infobox("已备份到\\\\fls0\\\\@PRDR\\\\config.g3m。",60,1);
             }
@@ -395,6 +401,7 @@ void main(void) {
                 Bfile_CloseFile_OS(fhBackupFileHandle);
                 info_error("读取备份文件时失败。",40,1);
               } else {
+                stat_read(sizeof(SessionConfig));
                 Bfile_CloseFile_OS(fhBackupFileHandle);
                 if (detect_magic(new_cfg.magic)) {
                   int choice = msgbox("确定要恢复备份吗？\n该操作不可逆！","警告",80,1,COLOR_GOLD);
@@ -415,7 +422,7 @@ void main(void) {
        }
         break;
         case M_MAIN_ABOUT:
-            infobox("Preader Alpha 0.1.3\nBy Ayachu\n请谨慎使用!（认真脸）",120,1);
+            infobox("Preader Alpha 0.1.3\nBy Ayachu\n特别鸣谢 CnCalc论坛@ExAcler\n请谨慎使用!（认真脸）",110,1);
             break;
         case M_MAIN_MANAGE_SLOTS:
             slot_manager();

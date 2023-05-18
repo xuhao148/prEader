@@ -12,8 +12,10 @@
 #include <preader/textinput.h>
 #include <stdlib.h>
 #include "prdefinitions.h"
+#include "statman.h"
 
 static color_t fgcolor,bgcolor;
+const static int zero = 0;
 
 const static color_t progressbar_texture_blue[] = {
 48991,48991,24191,48991,17983,24191,7647,17983,7647,
@@ -77,27 +79,18 @@ int read_book(char *fpath) {
         info_error(errbuf,100,1);
         return R_READER_NXBOOK;
     }
-    PD4 current_page_data = {{{'P','A','G','D','T','A'},-1,-1,cfg.font_size}};
+    PDCache current_page_data = {{{'P','A','G','D','T','A'},-1,-1,cfg.font_size}};
     if (fhPageData < 0) {
         unsigned short wszPageDataPath[128];
         Bfile_StrToName_ncpy(wszPageDataPath,pagedataname,64);
         start_paging(fhBookFileHandle,&current_page_data,&cfg);
         int cfret;
         int filesize;
-        switch(current_page_data.hdr.version) {
-            case 0:
-            filesize = sizeof(PD0);break;
-            case 1:
-            filesize = sizeof(PD1);break;
-            case 2:
-            filesize = sizeof(PD2);break;
-            case 3:
-            filesize = sizeof(PD3);break;
-            case 4:
-            filesize = sizeof(PD4);break;
-            default: Bfile_CloseFile_OS(fhBookFileHandle); fatal_error("分页错误\n请联系开发者。",72,1);
-        }
-        cfret = Bfile_CreateEntry_OS(wszPageDataPath,CREATEMODE_FILE,&filesize);
+        filesize = sizeof(PagingDataHeader)+4*current_page_data.hdr.n_pages_avail;
+        Bdisp_AllClr_VRAM();
+        PrintXY(1,1,"\x3\xa8正在创建并写入分页文件……",0,0);
+        Bdisp_PutDisp_DD();
+        cfret = Bfile_CreateEntry_OS(wszPageDataPath,CREATEMODE_FILE,&zero);
         if (cfret < 0) {
             char errbuf[64];
             sprintf(errbuf,"无法创建分页文件（errno=%d）\n请检查文件系统。",cfret);
@@ -109,32 +102,20 @@ int read_book(char *fpath) {
             sprintf(errbuf,"无法写入分页文件（errno=%d）\n请检查文件系统。",cfret);
            Bfile_CloseFile_OS(fhBookFileHandle); fatal_error(errbuf,72,1);
         }
-        PrintXY(3,4,"\x3\xa8正在将分页信息写入文件…",0,0);
         Bdisp_PutDisp_DD();
+        stat_paginate();
         Bfile_WriteFile_OS(fhPageData,&current_page_data,filesize);
+        stat_write(filesize);
         Bfile_CloseFile_OS(fhPageData);
     } else {
         //never forget closing files!
         Bfile_ReadFile_OS(fhPageData,&current_page_data.hdr,sizeof(current_page_data.hdr),0);
+        stat_read(sizeof(current_page_data.hdr));
         if (!check_magic_paging(current_page_data.hdr.magic)) {
             Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); info_error("不正确的分页文件（MAGIC错误）。\n请于文件管理器中删除分页文件，再使用本软件重建分页文件。",100,1);
             EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
         }
-        int filesize;
-        switch(current_page_data.hdr.version) {
-            case 0:
-            filesize = sizeof(PD0);break;
-            case 1:
-            filesize = sizeof(PD1);break;
-            case 2:
-            filesize = sizeof(PD2);break;
-            case 3:
-            filesize = sizeof(PD3);break;
-            case 4:
-            filesize = sizeof(PD4);break;
-            default: Bfile_CloseFile_OS(fhBookFileHandle);Bfile_CloseFile_OS(fhPageData); infobox("不正确的分页文件（版本错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);
-            EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
-        }
+        int filesize = sizeof(PagingDataHeader) + 4 * current_page_data.hdr.n_pages_avail;
         int real_filesize = Bfile_GetFileSize_OS(fhPageData);
         if (real_filesize != filesize) {
             Bfile_CloseFile_OS(fhBookFileHandle);
@@ -147,6 +128,7 @@ int read_book(char *fpath) {
             infobox("不正确的分页文件（对应字体错误）。\n请于文件管理器中删除%s，再使用本软件重建分页文件。",100,1);EnableGetkeyToMainFunctionReturn();return R_READER_WRONG_FORMAT;
         }
         Bfile_ReadFile_OS(fhPageData,&current_page_data,filesize,0);
+        stat_read(filesize);
         Bfile_CloseFile_OS(fhPageData);
     }
 
@@ -177,6 +159,7 @@ int read_book(char *fpath) {
             while (index_cfg < 32 && cfg.book_records[index_cfg].book_path[0]) index_cfg++; //Looks for the first empty slot
             if (index_cfg == 32) {info_error("配置文件空间声称剩余空间与实际剩余空间不一致。\n此书仍可以阅读，但无法保存书签及最后阅读的位置。\n请考虑重建配置文件。",100,1); index_cfg = -1;}
              else {cfg.n_book_records++;
+             stat_book();
             strcpy(cfg.book_records[index_cfg].book_path,fpath);
             cfg.book_records[index_cfg].last_location = 0;
             cfg.book_records[index_cfg].bookmark_version = cfg.font_size;
@@ -245,6 +228,7 @@ int read_book(char *fpath) {
     if (cfg.use_bgpict)
     {
         Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
+        stat_read(384*216*2);
         SaveVRAM_1();
     }
     /* Start the reading loop. */
@@ -253,9 +237,11 @@ int read_book(char *fpath) {
     bgcolor = cfg.color_scheme[CI_READER_BG];
     fgcolor = cfg.color_scheme[CI_READER_FG];
     DrawFrame(bgcolor);
+    int page_needs_refreshing = 1;
     while (in_reading) {
-        Bdisp_AllClr_VRAM();
-        rect(0,0,383,215,bgcolor);
+        if (page_needs_refreshing) {
+            rect(0,0,383,215,bgcolor);
+        }
         /*
         if (index_cfg == -1)
             sprintf(status_msg,"[!] %s %d/%d %d%%",filename_real,current_page+1,current_page_data.hdr.n_pages_avail,100*(current_page+1)/current_page_data.hdr.n_pages_avail);
@@ -263,7 +249,7 @@ int read_book(char *fpath) {
             sprintf(status_msg,"[%d] %s %d/%d %d%%",index_cfg,filename_real,current_page+1,current_page_data.hdr.n_pages_avail,100*(current_page+1)/current_page_data.hdr.n_pages_avail);
         DefineStatusMessage(status_msg,0,TEXT_COLOR_BLACK,0);
         */
-        if (cfg.use_bgpict) LoadVRAM_1();
+        if (cfg.use_bgpict && page_needs_refreshing) LoadVRAM_1();
         if (!cfg.hide_ui)
         {
             /* Draws the status area manually. */
@@ -299,7 +285,10 @@ int read_book(char *fpath) {
             sprintf(buf,"%d%d:%d%d",(h&0xF0)>>4,(h&0x0F),(m&0xF0)>>4,(m&0x0F));
             Bdisp_MMPrint(342,2,buf,0x40|0x2,-1,0,0,cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_BG_CHOSEN],1,0);
         }
-        draw_one_page(fhBookFileHandle,current_page_data.pages[current_page],cfg.font_size,0,cfg.process_backslashes);
+        if (page_needs_refreshing) {
+            draw_one_page(fhBookFileHandle,current_page_data.pages[current_page],cfg.font_size,0,cfg.process_backslashes);
+            stat_page();
+        }
         void *fkey_menu;
         void *fkey_jump;
         GetFKeyPtr(396,&fkey_menu);
@@ -345,6 +334,7 @@ int read_book(char *fpath) {
             case KEY_CTRL_EXIT:
                 in_reading = 0; break;
             case KEY_CTRL_F1: case KEY_CTRL_MENU:
+                page_needs_refreshing = 1;
                 drawDialog(20,42,361,189);
 rect(20,42,361,189,cfg.color_scheme[CI_MENU_BG]);
                 opt_ret = flexibleMenu(20,42-24,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,361-42+1,2,5,menu_f1,5,0,1,0);
@@ -367,14 +357,9 @@ rect(20,42,361,189,cfg.color_scheme[CI_MENU_BG]);
                 }
                 if (opt_ret == 3) in_reading = 0;
                 if (opt_ret == 4) {in_reading = 0; quit = 1;}
-                if (cfg.use_bgpict)
-                {
-                    Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
-                    SaveVRAM_1();
-                    /* Some function might have modified Secondary VRAM. We need to read it again. */
-                }
                 break;
             case KEY_CTRL_F2:
+                page_needs_refreshing = 1;
                 drawDialog(20,42,361,189);
 rect(20,42,361,189,cfg.color_scheme[CI_MENU_BG]);
                 opt_ret = flexibleMenu(20,42-24,cfg.color_scheme[CI_MENU_BG],0,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,361-42+1,2,4,menu_f2,4,0,1,0);
@@ -439,6 +424,7 @@ rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
                             if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = current_page_data.pages[current_page];
                             cfg.book_records[index_cfg].bookmarks[choice].page_location = current_page;
                             Bfile_ReadFile_OS(fhBookFileHandle,cfg.book_records[index_cfg].bookmarks[choice].preview,15,current_page_data.pages[current_page]); }
+                            stat_read(15);
                     }
                     break;
                     case 3:
@@ -464,12 +450,6 @@ rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
                             drawDialog(50,66,329,197);
 rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
                             int choice = flexibleMenu(50,66-24,cfg.color_scheme[CI_MENU_BG],1,cfg.color_scheme[CI_MENU_FG],cfg.color_scheme[CI_MENU_FG_CHOSEN],cfg.color_scheme[CI_MENU_FG_UNAVAIL],cfg.color_scheme[CI_MENU_BG_CHOSEN],0,329-50+1-6,1,8,bookmarks,7,first_available,1,1);
-                            if (cfg.use_bgpict)
-                            {
-                                Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
-                                SaveVRAM_1();
-                                /* Some function might have modified Secondary VRAM. We need to read it again. */
-                            }
                             if (choice >= 0) {cfg.book_records[index_cfg].bookmarks[choice].byte_location = -1;
                             cfg.book_records[index_cfg].bookmarks[choice].page_location = -1;
                             }
@@ -482,32 +462,33 @@ rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
                     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
                     break;
                 }
-                if (cfg.use_bgpict)
-                {
-                    Bfile_ReadFile_OS(bgImageFileFh,vram,384*216*2,0);
-                    SaveVRAM_1();
-                    /* Some function might have modified Secondary VRAM. We need to read it again. */
-                }
                 break;
             case KEY_CTRL_EXE: case KEY_CTRL_RIGHT:
+                page_needs_refreshing = 1;
                 current_page++;
                 if (current_page >= current_page_data.hdr.n_pages_avail) 
                     current_page = current_page_data.hdr.n_pages_avail - 1;
                 break;
             case KEY_CTRL_LEFT:
+                page_needs_refreshing = 1;
                 current_page--;
                 if (current_page < 0)
                     current_page = 0;
                 break;
             case KEY_CTRL_UP:
+                page_needs_refreshing = 1;
                 current_page-=10;
                 if (current_page < 0)
                     current_page = 0;
                 break;
             case KEY_CTRL_DOWN:
+                page_needs_refreshing = 1;
                 current_page+=10;
                 if (current_page >= current_page_data.hdr.n_pages_avail) 
                     current_page = current_page_data.hdr.n_pages_avail - 1;
+                break;
+            default:
+                page_needs_refreshing = 0;
                 break;
         }
     }
@@ -532,7 +513,7 @@ rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
     fatal_error("程序运行到了一个不该到达的地点。\n请检查你的运行环境，并与开发者联系。",72,1);
 }
 
-/* Draws one page based on the file handle and the offset of the file, treating '\r' and
+/* Draws one page based on the file handle and the offset of the file, treating '\n' and
    "\r\n" as newline.
    If arg. dryrun is true, it won't be actually drawn; this is for the paging feature.
    If arg. process_back_slashes is true, the backslashes will be duplicated before printing;
@@ -541,16 +522,110 @@ rect(50,66,329,197,cfg.color_scheme[CI_MENU_BG]);
    Arg. font determines the font size. 0 for large font, 1 for small font.
    Returns the offset of next character after this page. If this is the last page, returns -1.*/
 int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_black_slashes) {
-    unsigned char linebuf[513] = {0}; /*Buffer for drawing a single line.*/
+    unsigned char linebuf[257] = {0}; /*Buffer for drawing a single line.*/
     int maxline = font?9:7;
     int filesize = Bfile_GetFileSize_OS(filehandle);
-    int size_to_read = 256;
+    int size_to_read = 128;
     int current_line_offset = 0;
     int new_line_offset = 0;
     int this_is_the_last_line = 0;
+    /*
+    if (dryrun) {
+        // Does pure pagination algorithm that is faster than actually
+        // dry-running the pagination feature.  Thanks ExAcler!
+        int lines_drawn = 0, sx = 0;
+        unsigned char screenbuf[2050] = {0};
+        memset(screenbuf,0,font?1025:451);
+        Bfile_ReadFile_OS(filehandle, screenbuf, font?1024:450, offset);
+        screenbuf[1024] = 0;
+        if (cfg.extra_settings&BS_USE_STRICT_RENDERER) {
+            for (int i=0; screenbuf[i]; i++) {
+                unsigned char current_ch = linebuf[i];
+                if (current_ch == 0x00 || current_ch == 0x09) linebuf[i]=0x20;
+                else if (current_ch < 0x20 && current_ch != 0x0D && current_ch != 0x0A) linebuf[i] ='?';
+                else if (current_ch >= 0x80 && current_ch <= 0x1F || current_ch == 0xFF) linebuf[i] = '_';
+            }
+        }
+        if (process_black_slashes) duplicateBackSlashes(screenbuf);
+        int flg = 0;
+        int cur_char_width; int cur_char_dbyte;
+        for (;;) {
+            if (screenbuf[flg] == 0) return -1;
+            if (screenbuf[flg] >= 0x81 && screenbuf[flg] <= 0xF7) {
+                // GB Char
+                if (screenbuf[flg+1]) {
+                    cur_char_dbyte = 2;
+                    cur_char_width = font?16:24;
+                    goto width_calc;
+                } else {
+                    return -1; // EOF
+                }
+            } else {
+                if (screenbuf[flg] == '\r') {
+                    if (screenbuf[flg+1] == '\n') {
+                        cur_char_width = 0;
+                        cur_char_dbyte = 2;
+                        goto new_line;
+                    } else if (screenbuf[flg+1]) {
+                        cur_char_width = 0;
+                        cur_char_dbyte = 1;
+                        goto new_line;
+                    } else {
+                        return -1;
+                    }
+              　  } else if (screenbuf[flg] == '\n') {
+                    if (screenbuf[flg+1]) {
+                        cur_char_width = 0;
+                        cur_char_dbyte = 1;
+                        goto new_line;
+                    } else return -1;
+                } else {
+                    cur_char_dbyte = 1;
+                    if (font) {
+                        GetMiniGlyphPtr(screenbuf[flg], &cur_char_width);
+                    } else {
+                        cur_char_width = 18;
+                    }
+                    goto width_calc;
+                }
+            }
+
+            width_calc: // Ordinary chars
+            sx += cur_char_width;
+            if (sx > 384) {
+                sx = 0;
+                lines_drawn++;
+                if (lines_drawn > maxline) {
+                    // Current char is not rendered
+                    return offset+flg;
+                } else {
+                    flg+=cur_char_dbyte;
+                }
+            } else {
+                flg+=cur_char_dbyte;
+            }
+            if (screenbuf[flg] == 0) return -1;
+            continue;
+
+            new_line: // Manual new lines
+            sx = 0;
+            lines_drawn++;
+            if (lines_drawn > maxline) {
+                return offset+flg+cur_char_dbyte;
+            } else {
+                flg+=cur_char_dbyte;
+            }
+            if (screenbuf[flg] == 0) return -1;
+            continue;
+        }
+        return -1;
+    }
+    */
+
     for (int l=0; l<maxline && !this_is_the_last_line; l++) {
         if (offset + current_line_offset+ size_to_read >= filesize) {size_to_read = filesize-offset-current_line_offset;}
         Bfile_ReadFile_OS(filehandle,linebuf,size_to_read,offset+current_line_offset);
+        stat_read(size_to_read);
         if (cfg.extra_settings&BS_USE_STRICT_RENDERER) {
             for (int i=0; i<size_to_read; i++) {
                 unsigned char current_ch = linebuf[i];
@@ -562,8 +637,8 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
         linebuf[size_to_read] = 0;
         if (process_black_slashes) duplicateBackSlashes(linebuf);
         int i;
-        int newline_char_offset = 255;
-        for (i=0; i<=255; i++) {
+        int newline_char_offset = 127;
+        for (i=0; i<=127; i++) {
             if (linebuf[i] == '\r') {
                 linebuf[i] = 0;
                 newline_char_offset = i;
@@ -617,27 +692,27 @@ void get_file_basename(const char *pathname, char *filename, char *suffix, char 
     parentdir[i] = 0;
 }
 
-void start_paging(int filehandle, PD4 *pagedata, SessionConfig *config) {
+void start_paging(int filehandle, PDCache *pagedata, SessionConfig *config) {
     int offset = 0;
     int i=0;
     int filesize = Bfile_GetFileSize_OS(filehandle);
+    int dec = 0;
     ProcessPrintChars(936);
     ProgressBar2("正在分页……",0,filesize);
     ProcessPrintChars(0);
     while (i<8192) {
         pagedata->pages[i] = offset;
         offset = draw_one_page(filehandle,offset,cfg.font_size,1,cfg.process_backslashes);
+        if (dec != offset * 10 / filesize)
+        {
+            dec = offset * 10 / filesize;
+            ProcessPrintChars(936); ProgressBar2("正在分页……",dec,10); ProcessPrintChars(0);
+        }
         i++;
         if (offset < 0) break;
-        else {    ProcessPrintChars(936); ProgressBar2("正在分页……",offset,filesize); ProcessPrintChars(0);}
     }
     MsgBoxPop();
     pagedata->hdr.n_pages_avail = i;
-    if (i <= 16) pagedata->hdr.version = 0;
-    else if (i <= 64) pagedata->hdr.version = 1;
-    else if (i <= 256) pagedata->hdr.version = 2;
-    else if (i <= 1024) pagedata->hdr.version = 3;
-    else pagedata->hdr.version = 4;
     pagedata->hdr.font = cfg.font_size;
     return;
 }
@@ -671,33 +746,34 @@ int page_immediately(int handle, char *fpath, SessionConfig *config) {
             return -2; // User cancelled the operation
         }
     }
-    PD4 pagedata = {{{'P','A','G','D','T','A'},-1,-1,config->font_size}};
+    PDCache pagedata = {{{'P','A','G','D','T','A'},-1,-1,config->font_size}};
     start_paging(handle,&pagedata,config);
-    int filesize;
-    switch(pagedata.hdr.version) {
-            case 0:
-            filesize = sizeof(PD0);break;
-            case 1:
-            filesize = sizeof(PD1);break;
-            case 2:
-            filesize = sizeof(PD2);break;
-            case 3:
-            filesize = sizeof(PD3);break;
-            case 4:
-            filesize = sizeof(PD4);break;
-            default: msgbox("分页失败！","错误",40,1,COLOR_RED);return -4; //Failed pagination
-    }
-    int ret = Bfile_CreateEntry_OS(w_pagefname,CREATEMODE_FILE,&filesize);
+    Bdisp_AllClr_VRAM();
+    PrintXY(1,1,"\x3\xa8检查分页数据……",0,0);
+    Bdisp_PutDisp_DD();
+    int filesize = sizeof(PagingDataHeader)+4*pagedata.hdr.n_pages_avail;
+    Bdisp_AllClr_VRAM();
+    PrintXY(1,1,"\x3\xa8创建分页文件……",0,0);
+    Bdisp_PutDisp_DD();
+    int ret = Bfile_CreateEntry_OS(w_pagefname,CREATEMODE_FILE,&zero);
     if (ret < 0) {
         msgbox("无法创建新的分页文件！\n下次阅读此书时，您必须重建分页文件。","错误",68,1,COLOR_RED);
         return -8; //Failed on file creation
     }
+    Bdisp_AllClr_VRAM();
+    PrintXY(1,1,"\x3\xa8打开分页文件……",0,0);
+    Bdisp_PutDisp_DD();
     fhImmediatePageFileHandle = Bfile_OpenFile_OS(w_pagefname,WRITE,0);
     if (fhImmediatePageFileHandle < 0) {
         msgbox("无法写入新的分页文件！\n下次阅读此书时，您必须重建分页文件。","错误",68,1,COLOR_RED);
     }
+    Bdisp_AllClr_VRAM();
+    PrintXY(1,1,"\x3\xa8写入分页文件……",0,0);
+    Bdisp_PutDisp_DD();
     Bfile_WriteFile_OS(fhImmediatePageFileHandle,&pagedata,filesize);
+    stat_write(filesize);
     Bfile_CloseFile_OS(fhImmediatePageFileHandle);
+    stat_paginate();
     infobox("重建成功。\n请重新进入以查看效果。",56,1);
     return 0;
 }

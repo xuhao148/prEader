@@ -74,12 +74,13 @@
 #define M_BG_LABEL_CURRENT_PICT  4
 
 /*Main Menu Items*/
-#define N_M_MAIN                 5
+#define N_M_MAIN                 6
 #define M_MAIN_BROWSE            0
 #define M_MAIN_OPEN_RECENT       1
 #define M_MAIN_SETTINGS          2
 #define M_MAIN_MANAGE_SLOTS      3
-#define M_MAIN_ABOUT             4
+#define M_MAIN_ABOUT             5
+#define M_MAIN_STATS             4
 
 /* Menu item types */
 #define TMC_STANDARD            0

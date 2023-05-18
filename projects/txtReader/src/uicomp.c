@@ -7,10 +7,10 @@
 #include <extra_calls.h>
 #include <string.h>
 #include "prdefinitions.h"
-#include <preader/reader.h>
 #include <preader/common_definitions.h>
 
 #define AT(x,y) &vramaddr[(y)*384+(x)]
+#define DEBUG_INFO
 
 extern SessionConfig cfg;
 
@@ -105,7 +105,7 @@ int flexibleMenu(int left, int top, color_t bgcolor,
                  int usescrollbar
                  )
 {
-    SaveVRAM_1();
+    //SaveVRAM_1();
     int key;
 
     int current_scope;
@@ -211,9 +211,11 @@ int flexibleMenu(int left, int top, color_t bgcolor,
                 } while (!entries[current_item].enabled);
                 break;
             case KEY_CTRL_EXE:
-                LoadVRAM_1(); return current_scope + current_item_on_screen;
+                //LoadVRAM_1();
+                 return current_scope + current_item_on_screen;
             case KEY_CTRL_EXIT:
-                LoadVRAM_1(); return -1;
+                //LoadVRAM_1();
+                return -1;
         }
     }
 }
@@ -226,7 +228,7 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                  complexMenuItem entries[], int items_in_screen, int defaultitem, int isStatusBarOn,
                  int usescrollbar, int (*callback_agent)(complexMenuItem *, callbackData *, int *), void (*callback_memopt)(complexMenuItem *, int, int))
 {
-    SaveVRAM_1();
+    //SaveVRAM_1();
     int key;
     int result_index = 0;
     int current_scope;
@@ -374,8 +376,8 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                         int realBarLastPixel = realBarLeft+(realBarRight-realBarLeft)*(entries[current_scope+i].value-props->min)/(props->max-props->min);
                         rect(realBarLeft,realBarTop,realBarLastPixel,realBarBottom,25823);
                         /* Knob */
-                        color_t knobBorder = (current_item_on_screen==current_scope+i)?cfg.color_scheme[CI_MENU_FG_CHOSEN]:cfg.color_scheme[CI_MENU_FG];
-                        color_t knobBg = (current_item_on_screen==current_scope+i)?cfg.color_scheme[CI_MENU_BG_CHOSEN]:COLOR_WHITE;
+                        color_t knobBorder = (current_item_on_screen==i)?cfg.color_scheme[CI_MENU_FG_CHOSEN]:cfg.color_scheme[CI_MENU_FG];
+                        color_t knobBg = (current_item_on_screen==i)?cfg.color_scheme[CI_MENU_BG_CHOSEN]:COLOR_WHITE;
                         if (fontsize) {
                             rect(realBarLastPixel-1,realBarTop-2,realBarLastPixel+2,realBarBottom+2,knobBorder);
                             rect(realBarLastPixel,realBarTop-1,realBarLastPixel+1,realBarBottom+1,knobBg);
@@ -494,7 +496,7 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                 current_item = current_item_on_screen + current_scope;
                 switch (entries[current_item].type) {
                     case 0:case 3:case 4:case 6:
-                    LoadVRAM_1();
+                    //LoadVRAM_1();
                     return current_item;
                     case 1:
                     entries[current_item].value = 1 - entries[current_item].value;
@@ -515,7 +517,8 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                     break;
                     case 5: case TMC_TABITEM:
                     break;
-                    default: LoadVRAM_1(); return -1;
+                    default: //LoadVRAM_1();
+                     return -1;
                 }
                 break;
             case KEY_CTRL_RIGHT:
@@ -589,7 +592,8 @@ int flexibleMenu_complex(int left, int top, color_t bgcolor,
                 }
                 break;
             case KEY_CTRL_EXIT:
-                LoadVRAM_1(); return -1;
+                //LoadVRAM_1();
+                 return -1;
         }
         }
     }
@@ -779,7 +783,7 @@ int infobox(char *infomsg, int height, int statusbarenabled) {
     int dh = statusbarenabled?24:0;
     int top = dh+(LCD_HEIGHT_PX-dh)/2-height/2-height%2;
     int bottom = dh+(LCD_HEIGHT_PX-dh)/2+height/2;
-    SaveVRAM_1();
+    //SaveVRAM_1();
     drawDialog(57,top,316,bottom);
     printMiniSingleLineCutOffUnprintables(57,top-dh,"信息",316-57+1,COLOR_BLUE,COLOR_WHITE,0);
     printMiniSingleLineCutOffUnprintables(58,top-dh,"信息",316-57,COLOR_BLUE,COLOR_WHITE,1);
@@ -787,7 +791,7 @@ int infobox(char *infomsg, int height, int statusbarenabled) {
     do {
         GetKey(&key);
     } while (key != KEY_CTRL_EXIT && key != KEY_CTRL_EXE);
-    LoadVRAM_1();
+    //LoadVRAM_1();
     return key;
 }
 int msgbox(char *infomsg, char *title, int height, int statusbarenabled, color_t titlecolor) {
@@ -795,7 +799,7 @@ int msgbox(char *infomsg, char *title, int height, int statusbarenabled, color_t
     int dh = statusbarenabled?24:0;
     int top = dh+(LCD_HEIGHT_PX-dh)/2-height/2-height%2;
     int bottom = dh+(LCD_HEIGHT_PX-dh)/2+height/2;
-    SaveVRAM_1();
+    //SaveVRAM_1();
     drawDialog(57,top,316,bottom);
     printMiniSingleLineCutOffUnprintables(57,top-dh,title,316-57+1,titlecolor,COLOR_WHITE,0);
     printMiniSingleLineCutOffUnprintables(58,top-dh,title,316-57,titlecolor,COLOR_WHITE,1);
@@ -803,7 +807,7 @@ int msgbox(char *infomsg, char *title, int height, int statusbarenabled, color_t
     do {
         GetKey(&key);
     } while (key != KEY_CTRL_EXIT && key != KEY_CTRL_EXE && key != KEY_CTRL_F1);
-    LoadVRAM_1();
+    //LoadVRAM_1();
     return key;
 }
 
@@ -821,7 +825,7 @@ int info_error(char *infomsg, int height, int statusbarenabled)
     int dh = statusbarenabled?24:0;
     int top = dh+(LCD_HEIGHT_PX-dh)/2-height/2-height%2;
     int bottom = dh+(LCD_HEIGHT_PX-dh)/2+height/2;
-    SaveVRAM_1();
+    //SaveVRAM_1();
     drawDialog(57,top,316,bottom);
     printMiniSingleLineCutOffUnprintables(57,top-dh,"错误",316-57+1,COLOR_RED,COLOR_WHITE,0);
     printMiniSingleLineCutOffUnprintables(58,top-dh,"错误",316-57,COLOR_RED,COLOR_WHITE,1);
@@ -829,7 +833,7 @@ int info_error(char *infomsg, int height, int statusbarenabled)
     do {
         GetKey(&key);
     } while (key != KEY_CTRL_EXIT && key != KEY_CTRL_EXE);
-    LoadVRAM_1();
+    //LoadVRAM_1();
     return key;
 }
 
@@ -932,10 +936,10 @@ void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, 
             real_item_width[i] = __uicomp_getwidth_mini(props->items[i].label)+2;
         }
     }
-    while (__uicomp_isum(real_item_width,n_items) > width_available_for_ui) {
+    int width_sum = __uicomp_isum(real_item_width,n_items);
+    if (width_sum > width_available_for_ui) {
         for (int i=0; i<n_items; i++) {
-            real_item_width[i]--;
-            if (real_item_width[i] < 0) real_item_width[i] = 0;
+            real_item_width[i] = real_item_width[i] * width_available_for_ui / width_sum;
         }
     }
     int real_item_width_sum = __uicomp_isum(real_item_width,n_items);
@@ -952,10 +956,17 @@ void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, 
         txt_off = cfg.color_scheme[CI_MENU_FG_CHOSEN];
         trans = cfg.color_scheme[CI_MENU_BG_CHOSEN];
     } else {
+        if (tabitem.enabled) {
         bg = cfg.color_scheme[CI_MENU_BG_CHOSEN];
         txt_on = cfg.color_scheme[CI_MENU_FG_CHOSEN];
         txt_off = cfg.color_scheme[CI_MENU_BG_CHOSEN];
         trans = cfg.color_scheme[CI_MENU_BG];
+        } else {
+        bg = cfg.color_scheme[CI_MENU_FG_UNAVAIL];
+        txt_on = cfg.color_scheme[CI_MENU_FG_CHOSEN];
+        txt_off = cfg.color_scheme[CI_MENU_FG_UNAVAIL];
+        trans = cfg.color_scheme[CI_MENU_BG];
+        }
     }
     /* Start drawing... */
     if (use_smallfont) {
@@ -971,6 +982,7 @@ void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, 
     ui_cursor += 2;
     /* Items */
     for (int i=0; i<n_items; i++) {
+        if (real_item_width[i]>0) {
         __uicomp_rect_s(ui_cursor,top,ui_cursor+real_item_width[i]-1,top+17,bg);
         if (chosen != i) {
             __uicomp_rect_s(ui_cursor,top+1,ui_cursor+real_item_width[i]-1,top+16,trans);
@@ -987,6 +999,7 @@ void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, 
         if (i < n_items-1) {
             __uicomp_rect_s(ui_cursor,top,ui_cursor,top+17,bg);
             ui_cursor++;
+        }
         }
     }
     /* Right border */
@@ -1008,6 +1021,7 @@ void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, 
     ui_cursor += 2;
     /* Items */
     for (int i=0; i<n_items; i++) {
+        if (real_item_width[i]>0) {
         __uicomp_rect_s(ui_cursor,top,ui_cursor+real_item_width[i]-1,top+23,bg);
         if (chosen != i) {
             __uicomp_rect_s(ui_cursor,top+1,ui_cursor+real_item_width[i]-1,top+22,trans);
@@ -1024,6 +1038,7 @@ void __uicomp_draw_tabitem(int left, int top, int max_width, int use_smallfont, 
         if (i < n_items-1) {
             __uicomp_rect_s(ui_cursor,top,ui_cursor,top+23,bg);
             ui_cursor++;
+        }
         }
     }
     /* Right border */
