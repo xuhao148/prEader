@@ -635,7 +635,9 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
             }
         }
         linebuf[size_to_read] = 0;
-        if (process_black_slashes) duplicateBackSlashes(linebuf);
+        int extra_offset = 0;
+        if (process_black_slashes)
+            duplicateBackSlashes(linebuf);
         int i;
         int newline_char_offset = 127;
         for (i=0; i<=127; i++) {
@@ -652,9 +654,19 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
         /* After this, i will be the offset of first char of the next line, and the linebuf is truncated
            into the first line.*/
         int printable_bytes = bytesYouCanPrintInALineGB2312(linebuf,LCD_WIDTH_PX,font);
+
         if (printable_bytes < newline_char_offset) current_line_offset += printable_bytes;
         else current_line_offset += i;
         linebuf[printable_bytes] = 0;
+
+        if (process_black_slashes)
+            for (int f = 0; linebuf[f]; f++) {
+                if (linebuf[f] == '\\') {
+                    extra_offset++;
+                    f++;
+                }
+            }
+
         if (font) {
             int x, y;
             x = 0; y = 18 * l;
@@ -670,6 +682,9 @@ int draw_one_page(int filehandle, int offset, int font, int dryrun, int process_
             ProcessPrintChars(0);
             }
         }
+
+        current_line_offset -= extra_offset; // Thanks xiyihan
+
         if (offset + current_line_offset >= filesize) {this_is_the_last_line = 1;}
     }
     if (!this_is_the_last_line) return offset+current_line_offset; else return -1;

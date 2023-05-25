@@ -254,15 +254,22 @@ int browseAndOpenFileI(const char *path, const char *filter, char *filename_chos
     return filetype;
 }
 
-void duplicateBackSlashes(char *str) {
+//Returns number of backslashes until NEWLINE
+int duplicateBackSlashes(char *str) {
     char buf[513] = {0};
-    int a=0,  b=0;
+    int a=0,  b=0, count = 0;
+    int newline_met = 0;
     while (str[a]) {
+        if (str[a] == '\r' || str[a] == '\n') {
+            newline_met = 1;
+        }
         if (str[a] == '\\')
         {
             buf[b] = '\\';
             b++;
             buf[b] = '\\';
+            if (!newline_met)
+                count++;
         } else {
             buf[b] = str[a];
         }
@@ -271,5 +278,5 @@ void duplicateBackSlashes(char *str) {
     }
     buf[b] = 0;
     strcpy(str,buf);
-    return;
+    return count;
 }
